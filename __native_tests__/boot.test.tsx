@@ -1,3 +1,4 @@
+/// <reference types="jest" />
 /**
  * Boots the real app under the iOS jest preset, to catch startup errors that
  * only happen on native (the web build can't see them).
