@@ -1,3 +1,5 @@
+// v2 on purpose: v4 calls NativeModules.BlobModule.getConstants() at import, which doesn't exist on
+// React Native 0.88's new architecture and crashed the app at startup on iOS.
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
