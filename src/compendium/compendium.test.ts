@@ -84,3 +84,30 @@ describe('background origin feats', () => {
     expect(unresolved).toEqual([]);
   });
 });
+
+describe('filters', () => {
+  it('ANDs facets and ORs values, like 5etools', async () => {
+    const { matches, facetCounts, FACETS, arrange } = await import('./facets');
+    const spells = getIndex().filter((e) => e.cat === 'spell');
+    const pick = (f: Record<string, string[]>) => spells.filter((e) => matches(e, f)).map((e) => e.name);
+    const wiz3 = pick({ class: ['Wizard'], level: ['3'], edition: ['2024 Core'] });
+    expect(wiz3).toContain('Fireball');
+    expect(wiz3).not.toContain('Revivify');
+    const either = pick({ level: ['0', '1'], class: ['Cleric'], edition: ['2024 Core'] });
+    expect(either).toEqual(expect.arrayContaining(['Guidance', 'Bless']));
+    const conc = pick({ tags: ['Concentration'], damage: ['Fire'], edition: ['2024 Core'] });
+    expect(conc).not.toContain('Fireball');
+    // Counts ignore the facet's own selection so other values stay pickable.
+    const levels = facetCounts(spells, FACETS.spell[0], { level: ['3'] });
+    expect(levels.map((x) => x.value)).toEqual(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
+    const groups = arrange(spells.slice(0, 50), 'spell', 'level', String);
+    expect(groups[0].title).toMatch(/Cantrip|Level/);
+  });
+
+  it('item rarity and attunement facets', async () => {
+    const { matches } = await import('./facets');
+    const items = getIndex().filter((e) => e.cat === 'item' && matches(e, { rarity: ['Legendary'], tags: ['Requires Attunement'], edition: ['2024 Core'] }));
+    expect(items.length).toBeGreaterThan(10);
+    expect(items.map((e) => e.name)).not.toContain('Longsword');
+  });
+});

@@ -42,6 +42,8 @@ export interface IndexEntry {
   subtitle: string;
   /** Lowercased, punctuation-free name for matching. */
   key: string;
+  /** Filter values (see facets.ts). */
+  facets: Record<string, string | string[]>;
 }
 
 export interface Entry {
@@ -64,9 +66,12 @@ let byName: Map<string, IndexEntry[]> | null = null;
 
 export function getIndex(): IndexEntry[] {
   if (!index) {
-    const raw = require('../data/compendium/index.json') as { sources: Record<string, string>; entries: [string, string, Category, string, string][] };
+    const raw = require('../data/compendium/index.json') as {
+      sources: Record<string, string>;
+      entries: [string, string, Category, string, string, Record<string, string | string[]>][];
+    };
     sources = raw.sources;
-    index = raw.entries.map(([id, name, cat, source, subtitle]) => ({ id, name, cat, source, subtitle, key: normalize(name) }));
+    index = raw.entries.map(([id, name, cat, source, subtitle, facets]) => ({ id, name, cat, source, subtitle, key: normalize(name), facets: facets ?? {} }));
   }
   return index;
 }
@@ -131,10 +136,10 @@ export function resolveLink(tag: string, ref: string): string | null {
  * Ranked search: exact name, then prefix, then word-prefix, then substring.
  * Within a tier, 2024 printings first, then alphabetical.
  */
-export function search(query: string, cat: Category | null, limit = 200): IndexEntry[] {
+export function search(query: string, cat: Category | null, limit = 200, filter?: (e: IndexEntry) => boolean): IndexEntry[] {
   const all = getIndex();
   const q = normalize(query);
-  const pool = cat ? all.filter((e) => e.cat === cat) : all;
+  const pool = all.filter((e) => (!cat || e.cat === cat) && (!filter || filter(e)));
   if (!q) return pool.slice(0, limit);
   const scored: [number, IndexEntry][] = [];
   for (const e of pool) {

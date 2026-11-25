@@ -236,7 +236,7 @@ for (const it of [...itemsRaw, ...resolveCopies(read('magicvariants.json').magic
       ['Cost', it.value ? (it.value >= 100 ? `${it.value / 100} gp` : it.value >= 10 ? `${it.value / 10} sp` : `${it.value} cp`) : undefined],
     ],
     entries: [...(it.entries ?? []), ...(it.items ? [{ type: 'list', items: it.items.map((x: string) => `{@item ${x}}`) }] : [])],
-    data: { rarity, attunement: !!attune, magic: !!rarity && rarity !== 'none' },
+    data: { rarity, attunement: !!attune, magic: !!rarity && rarity !== 'none', type: it.wondrous ? 'Wondrous Item' : type },
   });
 }
 
@@ -369,9 +369,74 @@ for (const sf of resolveCopies(subclassFeatures)) {
   });
 }
 
+// ---------- filter facets ----------
+const CORE_2024 = new Set(['XPHB', 'XDMG', 'XMM']);
+const ITEM_GROUP: Record<string, string> = {
+  'Melee Weapon': 'Weapon', 'Ranged Weapon': 'Weapon', 'Light Armor': 'Armor', 'Medium Armor': 'Armor', 'Heavy Armor': 'Armor',
+  Shield: 'Shield', Potion: 'Potion', Scroll: 'Scroll', Ring: 'Ring', Rod: 'Rod', Staff: 'Staff', Wand: 'Wand',
+  'Wondrous Item': 'Wondrous Item', Ammunition: 'Ammunition', 'Adventuring Gear': 'Adventuring Gear', "Artisan's Tools": 'Tools',
+  Tools: 'Tools', 'Gaming Set': 'Tools', Instrument: 'Instrument', 'Spellcasting Focus': 'Spellcasting Focus', 'Generic Variant': 'Generic Variant',
+  Mount: 'Mount & Vehicle', 'Vehicle (land)': 'Mount & Vehicle', 'Vehicle (water)': 'Mount & Vehicle', 'Vehicle (air)': 'Mount & Vehicle',
+  'Vehicle (space)': 'Mount & Vehicle', 'Tack and Harness': 'Mount & Vehicle', 'Art Object': 'Treasure', Gemstone: 'Treasure',
+  Treasure: 'Treasure', Coinage: 'Treasure', 'Trade Good': 'Treasure', 'Food and Drink': 'Food & Drink', Explosive: 'Explosive',
+};
+const capWords = (x: string) => x.replace(/\b\w/g, (m) => m.toUpperCase());
+
+/** Values to filter on, like 5etools' filter panels. Every value is a string; lists mean "any of". */
+function facetsOf(cat: string, o: Out): Record<string, string | string[]> {
+  const d = (o.data ?? {}) as Json;
+  const f: Record<string, string | string[]> = { source: o.source, edition: CORE_2024.has(o.source) ? '2024 Core' : 'Other books' };
+  const field = (k: string) => o.fields?.find(([n]) => n === k)?.[1] ?? '';
+  switch (cat) {
+    case 'spell': {
+      f.level = String(d.level);
+      f.school = d.school;
+      f.class = d.classes ?? [];
+      const t = field('Casting Time');
+      f.time = /^Action/.test(t) ? 'Action' : /^Bonus Action/.test(t) ? 'Bonus Action' : /^Reaction/.test(t) ? 'Reaction' : 'Longer';
+      f.damage = (d.damage ?? []).map(capWords);
+      if (d.save) f.save = capWords(d.save);
+      if (d.attack) f.attack = d.attack === 'M' ? 'Melee' : 'Ranged';
+      f.tags = [d.concentration && 'Concentration', d.ritual && 'Ritual', d.heal && 'Healing'].filter(Boolean);
+      break;
+    }
+    case 'item':
+      f.type = ITEM_GROUP[d.type] ?? 'Other';
+      f.rarity = d.rarity ? capWords(d.rarity) : 'None';
+      f.tags = [d.magic ? 'Magic' : 'Mundane', d.attunement && 'Requires Attunement'].filter(Boolean);
+      break;
+    case 'feat':
+      f.category = (o.subtitle.match(/^(.*? Feat)/)?.[1] ?? 'Feat').replace(/ \(.*/, '');
+      if (f.category === 'Feat') f.category = 'Uncategorized';
+      if (/Prerequisite/.test(o.subtitle)) f.tags = ['Has Prerequisite'];
+      break;
+    case 'optionalfeature':
+      f.type = o.subtitle.replace(/ \(Prerequisite.*/, '').split(', ');
+      break;
+    case 'classfeature':
+      f.class = d.className;
+      f.level = String(d.level);
+      break;
+    case 'subclassfeature':
+      f.class = d.className;
+      f.subclass = d.subclass;
+      f.level = String(d.level);
+      break;
+    case 'condition':
+    case 'rule':
+      f.kind = o.subtitle;
+      break;
+    case 'species':
+      f.kind = o.subtitle.startsWith('Subrace') ? 'Subrace' : o.source === 'XPHB' ? '2024 Species' : 'Legacy Race';
+      break;
+  }
+  for (const k of Object.keys(f)) if (Array.isArray(f[k]) && !(f[k] as string[]).length) delete f[k];
+  return f;
+}
+
 // ---------- write ----------
 mkdirSync(OUT, { recursive: true });
-const index: [string, string, string, string, string][] = [];
+const index: [string, string, string, string, string, Record<string, string | string[]>][] = [];
 const counts: Record<string, number> = {};
 for (const [cat, list] of outputs) {
   // Same id twice means two records collapsed (e.g. copy chains); keep the last.
@@ -379,7 +444,7 @@ for (const [cat, list] of outputs) {
   const sorted = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
   counts[cat] = sorted.length;
   writeFileSync(join(OUT, `${cat}.json`), JSON.stringify(Object.fromEntries(sorted.map(({ id, ...rest }) => [id, rest]))));
-  for (const o of sorted) index.push([o.id, o.name, cat, o.source, o.subtitle]);
+  for (const o of sorted) index.push([o.id, o.name, cat, o.source, o.subtitle, facetsOf(cat, o)]);
 }
 const usedSources = [...new Set(index.map((e) => e[3]))].sort();
 writeFileSync(
