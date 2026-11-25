@@ -1,12 +1,15 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { pickAvatar } from '../../character/avatar';
+import { choiceSpecs, expertiseAllowed } from '../../character/choices';
 import { POINT_COST, STANDARD_ARRAY, derive, fmtMod, mod } from '../../character/engine';
 import { RULES, getArmor, getBackground, getClass, getSpecies } from '../../character/rules';
 import { resolveLink } from '../../compendium/store';
 import { blankCharacter, useCharacters } from '../../character/store';
 import { ABILITIES, ABILITY_NAME, ABILITY_SHORT, Ability, Character, ProfLevel } from '../../character/types';
-import { Button, Picker, PickerItem, Row, Section, Segmented, Stepper, useStyles, close } from '../../components/ui';
+import { Avatar } from '../../components/Avatar';
+import { Button, MultiPicker, Picker, PickerItem, Row, Section, Segmented, Stepper, close, useStyles } from '../../components/ui';
 import { Palette } from '../../theme/colors';
 
 type PickerKind = { kind: 'class'; index: number } | { kind: 'subclass'; index: number } | { kind: 'species' } | { kind: 'background' } | { kind: 'armor' };
@@ -163,6 +166,13 @@ export default function EditCharacter() {
   const choice = first?.skillChoice;
   const classOptions = new Set(choice && choice.from !== 'any' ? choice.from : []);
   const chosenFromClass = Object.entries(c.skills).filter(([k, v]) => v > 0 && classOptions.has(k) && !bg?.skills.includes(k)).length;
+  const specs = useMemo(() => choiceSpecs(c), [c]);
+  const [choosing, setChoosing] = useState<string | null>(null);
+  const choosingSpec = specs.find((x) => x.key === choosing);
+  const speciesSkills = new Set(c.choices['species:skills'] ?? []);
+  const expertise = expertiseAllowed(c);
+  const expertiseUsed = d.skills.filter((x) => x.prof === 2).length;
+  const status = (have: number, need: number) => (have === need ? pal.green : have > need ? pal.red : pal.orange);
   const cycleSkill = (key: string, fromBg: boolean) => {
     const cur = (c.skills[key] ?? 0) as ProfLevel;
     const next: ProfLevel = fromBg ? (cur === 2 ? 1 : 2) : ((cur + 1) % 3) as ProfLevel;
@@ -188,7 +198,18 @@ export default function EditCharacter() {
       />
       <ScrollView style={st.root} contentContainerStyle={st.content} keyboardShouldPersistTaps="handled">
         <Section>
-          <View style={st.inputRow}>
+          <View style={[st.inputRow, { flexDirection: 'row', alignItems: 'center', gap: 12, height: 72 }]}>
+            <Pressable
+              onPress={async () => {
+                const uri = await pickAvatar().catch(() => null);
+                if (uri) set({ avatar: uri });
+              }}
+              onLongPress={() => set({ avatar: null })}
+              accessibilityLabel="Choose portrait"
+            >
+              <Avatar uri={c.avatar} name={c.name || '+'} size={52} />
+              <Text style={st.avatarHint}>{c.avatar ? 'Edit' : 'Photo'}</Text>
+            </Pressable>
             <TextInput value={c.name} onChangeText={(name) => set({ name })} placeholder="Character name" placeholderTextColor={pal.tertiaryLabel} style={st.input} />
           </View>
         </Section>
@@ -235,6 +256,20 @@ export default function EditCharacter() {
           )}
         </Section>
 
+        {specs.length > 0 && (
+          <Section title="Choices" footer="Picks your class and species ask for. Tap ⓘ in the list to read an option.">
+            {specs.map((sp, i) => {
+              const have = (c.choices[sp.key] ?? []).filter((v) => sp.options.some((o) => o.value === v)).length;
+              return (
+                <Row key={sp.key} first={i === 0} label={sp.title}
+                  detail={[sp.source, (c.choices[sp.key] ?? []).map((v) => sp.options.find((o) => o.value === v)?.label ?? v).join(', ')].filter(Boolean).join(' · ')}
+                  value={`${have}/${sp.count}`} valueStyle={{ color: status(have, sp.count), fontWeight: '700' }}
+                  onPress={() => setChoosing(sp.key)} />
+              );
+            })}
+          </Section>
+        )}
+
         <Section
           title="Ability Scores"
           footer={c.scoreMethod === 'pointbuy' ? `${27 - pointsSpent} of 27 points left` : c.scoreMethod === 'standard' ? 'Use + and − to swap values between abilities.' : undefined}
@@ -266,13 +301,27 @@ export default function EditCharacter() {
           })}
         </Section>
 
-        <Section title="Skills" footer={choice ? `${first!.name}: choose ${choice.count}${choice.from === 'any' ? ' of any skills' : ''} (${chosenFromClass}/${choice.count} chosen). Tap to cycle proficient → expertise → none.` : undefined}>
+        <Section title="Skills" footer="Tap a skill to cycle proficient → expertise → none. Background and species skills are always proficient.">
+          <View style={st.quota}>
+            {choice && (
+              <View style={[st.quotaPill, { borderColor: status(chosenFromClass, choice.count) }]}>
+                <Text style={[st.quotaText, { color: status(chosenFromClass, choice.count) }]}>
+                  {first!.name} skills {chosenFromClass}/{choice.count}
+                </Text>
+              </View>
+            )}
+            {expertise.count > 0 && (
+              <View style={[st.quotaPill, { borderColor: status(expertiseUsed, expertise.count) }]}>
+                <Text style={[st.quotaText, { color: status(expertiseUsed, expertise.count) }]}>Expertise {expertiseUsed}/{expertise.count}</Text>
+              </View>
+            )}
+          </View>
           {d.skills.map((sk, i) => {
             const fromBg = sk.fromBackground;
             const option = classOptions.has(sk.key);
             return (
               <Row key={sk.key} first={i === 0} label={sk.name}
-                detail={[ABILITY_SHORT[sk.ability], fromBg ? `${bg?.name} background` : option ? `${first?.name} option` : ''].filter(Boolean).join(' · ')}
+                detail={[ABILITY_SHORT[sk.ability], speciesSkills.has(sk.key) ? `${species?.name} trait` : fromBg ? `${bg?.name} background` : option ? `${first?.name} option` : ''].filter(Boolean).join(' · ')}
                 onPress={() => cycleSkill(sk.key, fromBg)}
                 right={<Text style={[st.prof, sk.prof === 2 && st.profExp, sk.prof === 0 && st.profNone]}>{sk.prof === 2 ? 'Expertise' : sk.prof === 1 ? 'Proficient' : '—'}</Text>} />
             );
@@ -321,6 +370,17 @@ export default function EditCharacter() {
           )}
         </View>
       </ScrollView>
+      {choosingSpec && (
+        <MultiPicker
+          visible
+          title={choosingSpec.title}
+          count={choosingSpec.count}
+          options={choosingSpec.options}
+          value={c.choices[choosingSpec.key] ?? []}
+          onChange={(v) => set({ choices: { ...c.choices, [choosingSpec.key]: v } })}
+          onClose={() => setChoosing(null)}
+        />
+      )}
       {pk && <Picker visible title={pk.title} items={pk.items} value={pk.value} onPick={pk.onPick} onClose={() => setPicker(null)} />}
     </KeyboardAvoidingView>
   );
@@ -344,6 +404,10 @@ const styles = (c: Palette) =>
     scoreTotal: { width: 30, textAlign: 'right', fontSize: 17, fontWeight: '600', color: c.label, fontVariant: ['tabular-nums'] },
     scoreMod: { width: 36, textAlign: 'right', fontSize: 15, color: c.secondaryLabel, fontVariant: ['tabular-nums'] },
     prof: { fontSize: 15, color: c.accent, fontWeight: '500' },
+    avatarHint: { fontSize: 11, color: c.accent, textAlign: 'center', marginTop: 2 },
+    quota: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.separator },
+    quotaPill: { borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 10, height: 28, justifyContent: 'center' },
+    quotaText: { fontSize: 13, fontWeight: '700' },
     profExp: { color: c.green },
     profNone: { color: c.tertiaryLabel },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

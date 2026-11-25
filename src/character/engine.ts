@@ -48,6 +48,9 @@ export interface Derived {
   passivePerception: Stat;
   maxHp: Stat;
   hitDice: { faces: number; total: number; used: number }[];
+  /** Pounds carried vs. carrying capacity (2024: STR × 15, doubled for Large). */
+  carry: { weight: number; capacity: number };
+  attuned: number;
   spellcasting: Spellcasting[];
   slots: { level: number; max: number; used: number }[];
   pact: { max: number; level: number; used: number } | null;
@@ -92,7 +95,7 @@ export function derive(c: Character): Derived {
 
   // ---- skills ----
   const jack = levelOf('Bard') >= 2;
-  const bgSkills = new Set(getBackground(c.backgroundId)?.skills ?? []);
+  const bgSkills = new Set([...(getBackground(c.backgroundId)?.skills ?? []), ...(c.choices?.['species:skills'] ?? [])]);
   const skills = SKILLS.map((s) => {
     const key = s.name.toLowerCase();
     // Background skills are always proficient; the player can still raise them to expertise.
@@ -181,7 +184,8 @@ export function derive(c: Character): Derived {
       ability,
       dc: stat(dcParts, c, 'spellDc'),
       attack: stat(atkParts, c, 'spellAttack'),
-      cantrips: x.rules.cantrips?.[x.cl.level - 1] ?? 0,
+      cantrips: (x.rules.cantrips?.[x.cl.level - 1] ?? 0) +
+        (['Thaumaturge', 'Magician'].some((o) => (c.choices?.[`${x.cl.name}:divine-order`] ?? c.choices?.[`${x.cl.name}:primal-order`] ?? []).includes(o)) ? 1 : 0),
       prepared: x.rules.prepared?.[x.cl.level - 1] ?? 0,
     });
     if (x.rules.caster === 'full' || x.rules.caster === 'half') {
@@ -273,8 +277,16 @@ export function derive(c: Character): Derived {
   }
 
   const summary = cls.map((x) => `${x.cl.name} ${x.cl.level}`).join(' / ');
+  const inv = c.inventory ?? [];
+  const weight = Math.round(inv.reduce((s, it) => s + it.weight * it.qty, 0) * 100) / 100;
+  const coinWeight = Object.values(c.coins ?? {}).reduce((s, n) => s + n, 0) / 50; // 50 coins = 1 lb
+  const large = (species?.size ?? []).includes('L');
+  const carry = { weight: Math.round((weight + coinWeight) * 10) / 10, capacity: scores.str.value * 15 * (large ? 2 : 1) };
+  const attuned = inv.filter((i) => i.attuned).length;
+  if (attuned > 3) warnings.push(`Attuned to ${attuned} items (max 3)`);
+  if (carry.weight > carry.capacity) warnings.push('Carrying more than your capacity');
   return {
-    level, pb, scores, mods, saves, skills, initiative, ac, speed, passivePerception, maxHp, hitDice,
+    level, pb, scores, mods, saves, skills, initiative, ac, speed, passivePerception, maxHp, hitDice, carry, attuned,
     spellcasting, slots, pact, resources, features, warnings, summary,
   };
 }
@@ -354,11 +366,16 @@ export function longRest(c: Character): Character {
 
 /** Fills fields added after a character was first saved, so old saves keep loading. */
 export function migrate(c: Character): Character {
-  return { ...newCharacter(c.id), ...c, weapons: c.weapons ?? [], spells: c.spells ?? [], feats: c.feats ?? [], raging: c.raging ?? false };
+  return {
+    ...newCharacter(c.id), ...c, weapons: c.weapons ?? [], spells: c.spells ?? [], feats: c.feats ?? [], raging: c.raging ?? false,
+    choices: c.choices ?? {}, inventory: c.inventory ?? [], coins: c.coins ?? { pp: 0, gp: 0, ep: 0, sp: 0, cp: 0 }, avatar: c.avatar ?? null,
+  };
 }
 
 /** Feats are matched by name so 2024 and setting printings of the same feat both count. */
-export const hasFeat = (c: Character, name: string) => (c.feats ?? []).some((id) => id.startsWith(`feat:${name.toLowerCase()}|`));
+export const hasFeat = (c: Character, name: string) =>
+  // Feats also come from choices: a Fighting Style, a Human's Versatile origin feat.
+  [...(c.feats ?? []), ...Object.values(c.choices ?? {}).flat()].some((id) => id.startsWith(`feat:${name.toLowerCase()}|`));
 
 export function newCharacter(id: string): Character {
   const now = Date.now();
@@ -369,7 +386,8 @@ export function newCharacter(id: string): Character {
     backgroundBonus: {}, otherBonus: {}, skills: {}, extraSaves: [],
     armorId: null, shield: false, acBonus: 0, hpPerLevelBonus: 0,
     hp: { current: 0, temp: 0 }, deathSaves: { success: 0, fail: 0 }, hitDiceUsed: {}, slotsUsed: [], pactUsed: 0,
-    resourcesUsed: {}, conditions: [], exhaustion: 0, concentration: null, feats: [], raging: false, weapons: [], spells: [], overrides: {}, notes: '',
+    resourcesUsed: {}, conditions: [], exhaustion: 0, concentration: null, feats: [], raging: false, weapons: [], spells: [],
+    choices: {}, inventory: [], coins: { pp: 0, gp: 0, ep: 0, sp: 0, cp: 0 }, avatar: null, overrides: {}, notes: '',
   };
 }
 

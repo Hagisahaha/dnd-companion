@@ -18,7 +18,10 @@ describe('attacks', () => {
   const scores = { str: 16, dex: 14, con: 14, int: 10, wis: 12, cha: 8 };
 
   it('fighter longsword: STR, proficient, versatile, mastery', () => {
-    const c = make({ classes: [{ name: 'Fighter', level: 1, subclass: null }], baseScores: scores, weapons: [{ key: 'a', itemId: 'item:longsword|xphb', bonus: 0 }] });
+    const base = make({ classes: [{ name: 'Fighter', level: 1, subclass: null }], baseScores: scores, weapons: [{ key: 'a', itemId: 'item:longsword|xphb', bonus: 0 }] });
+    // Mastery only for weapons picked under Weapon Mastery.
+    expect(attacks(base)[0].mastery).toBeNull();
+    const c = { ...base, choices: { 'Fighter:mastery': ['item:longsword|xphb'] } };
     const ls = attacks(c)[0];
     expect(ls.toHit.value).toBe(5);
     expect(ls.damage).toBe('1d8+3');
@@ -165,5 +168,46 @@ describe('automation: feats, rage, sneak attack, granted spells', () => {
     expect(list.every((s) => s.prepared)).toBe(true);
     const pal = spells(make({ classes: [{ name: 'Paladin', level: 2, subclass: null }] }));
     expect(pal.map((s) => s.name)).toEqual(['Divine Smite']);
+  });
+});
+
+describe('class and species choices', () => {
+  it('warlock invocations: count from the table, options gated by level', async () => {
+    const { choiceSpecs } = await import('./choices');
+    const spec = choiceSpecs(make({ classes: [{ name: 'Warlock', level: 5, subclass: null }] })).find((x) => x.key === 'Warlock:invocations')!;
+    expect(spec.count).toBe(5);
+    const names = spec.options.map((o) => o.label);
+    expect(names).toContain('Agonizing Blast');
+    expect(names).toContain('Ascendant Step');
+    const low = choiceSpecs(make({ classes: [{ name: 'Warlock', level: 2, subclass: null }] })).find((x) => x.key === 'Warlock:invocations')!;
+    expect(low.options.map((o) => o.label)).not.toContain('Ascendant Step');
+  });
+
+  it('fighting style, mastery and orders show up at the right levels', async () => {
+    const { choiceSpecs } = await import('./choices');
+    const keys = (cls: string, level: number) => choiceSpecs(make({ classes: [{ name: cls, level, subclass: null }] })).map((x) => `${x.key}:${x.count}`);
+    expect(keys('Fighter', 1)).toEqual(['Fighter:fighting-style:1', 'Fighter:mastery:3']);
+    expect(keys('Paladin', 1)).toEqual(['Paladin:mastery:2']);
+    expect(keys('Paladin', 2)).toContain('Paladin:fighting-style:1');
+    expect(keys('Sorcerer', 10)).toContain('Sorcerer:metamagic:4');
+    expect(keys('Cleric', 1)).toContain('Cleric:divine-order:1');
+  });
+
+  it('picked choices take effect', () => {
+    const scores = { str: 14, dex: 16, con: 14, int: 10, wis: 14, cha: 8 };
+    const ranger = make({ classes: [{ name: 'Ranger', level: 2, subclass: null }], baseScores: scores, choices: { 'Ranger:fighting-style': ['feat:archery|xphb'] }, weapons: [{ key: 'b', itemId: 'item:longbow|xphb', bonus: 0 }] });
+    expect(attacks(ranger)[0].toHit.value).toBe(3 + 2 + 2);
+    const cleric = make({ classes: [{ name: 'Cleric', level: 1, subclass: null }], baseScores: scores, choices: { 'Cleric:divine-order': ['Protector'] }, weapons: [{ key: 'w', itemId: 'item:longsword|xphb', bonus: 0 }] });
+    expect(attacks(cleric)[0].proficient).toBe(true);
+    const thaum = derive(make({ classes: [{ name: 'Cleric', level: 1, subclass: null }], choices: { 'Cleric:divine-order': ['Thaumaturge'] } }));
+    expect(thaum.spellcasting[0].cantrips).toBe(4);
+    const human = derive(make({ speciesId: 'species:human|xphb', choices: { 'species:skills': ['stealth'] } }));
+    expect(human.skills.find((x) => x.key === 'stealth')!.prof).toBe(1);
+  });
+
+  it('expertise allowance by class level', async () => {
+    const { expertiseAllowed } = await import('./choices');
+    expect(expertiseAllowed(make({ classes: [{ name: 'Rogue', level: 6, subclass: null }] })).count).toBe(4);
+    expect(expertiseAllowed(make({ classes: [{ name: 'Bard', level: 1, subclass: null }] })).count).toBe(0);
   });
 });

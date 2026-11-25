@@ -13,6 +13,7 @@ const light = {
   separator: 'rgba(60,60,67,0.29)',
   accent: '#007AFF',
   green: '#34C759',
+  orange: '#FF9500',
   red: '#FF3B30',
   onAccent: '#FFFFFF',
 };
@@ -29,6 +30,7 @@ const dark: typeof light = {
   separator: 'rgba(84,84,88,0.65)',
   accent: '#0A84FF',
   green: '#30D158',
+  orange: '#FF9F0A',
   red: '#FF453A',
   onAccent: '#FFFFFF',
 };

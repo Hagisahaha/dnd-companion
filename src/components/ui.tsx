@@ -7,6 +7,7 @@ import { ReactNode, useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { normalize } from '../compendium/store';
+import { EntrySheet } from './compendium/EntrySheet';
 import { Palette, usePalette } from '../theme/colors';
 
 /** Back if there is somewhere to go back to; otherwise (opened from a link) home. */
@@ -186,6 +187,10 @@ export const base = (c: Palette) =>
     pickRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: c.background },
     badge: { fontSize: 12, color: c.tertiaryLabel, marginLeft: 8, fontWeight: '500' },
     check: { fontSize: 17, color: c.accent, marginLeft: 10, fontWeight: '700' },
+    box: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: c.fillStrong, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+    boxMark: { color: c.onAccent, fontSize: 14, fontWeight: '800' },
+    info: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: c.accent, alignItems: 'center', justifyContent: 'center', marginLeft: 10 },
+    infoText: { color: c.accent, fontSize: 14, fontWeight: '700', fontStyle: 'italic' },
     btn: { height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
     btn_filled: { backgroundColor: c.accent },
     btn_tinted: { backgroundColor: c.fill },
@@ -197,3 +202,87 @@ export const base = (c: Palette) =>
     btnText_plain: { color: c.accent },
     btnText_destructive: { color: c.red },
   });
+
+export interface MultiOption {
+  value: string;
+  label: string;
+  detail?: string;
+  badge?: string;
+  entryId?: string;
+}
+
+/**
+ * Pick exactly `count` options. The header always says how many are chosen; when the
+ * quota is full, picking another one is refused (or swaps, when only one is allowed).
+ */
+export function MultiPicker({ visible, title, count, options, value, onChange, onClose }: {
+  visible: boolean; title: string; count: number; options: MultiOption[]; value: string[];
+  onChange: (v: string[]) => void; onClose: () => void;
+}) {
+  const [s, c] = useStyles(base);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [q, setQ] = useState('');
+  const [nudge, setNudge] = useState(false);
+  const shown = useMemo(() => {
+    const n = normalize(q);
+    return n ? options.filter((o) => normalize(o.label).includes(n)) : options;
+  }, [options, q]);
+  const done = value.length === count;
+  const toggle = (v: string) => {
+    if (value.includes(v)) return onChange(value.filter((x) => x !== v));
+    if (count === 1) return onChange([v]);
+    if (value.length >= count) {
+      setNudge(true);
+      setTimeout(() => setNudge(false), 1400);
+      return;
+    }
+    onChange([...value, v]);
+  };
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: c.background }} edges={['top', 'bottom']}>
+        <View style={s.pickerHead}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.pickerTitle}>{title}</Text>
+            <Text style={[s.rowDetail, { color: nudge ? c.red : done ? c.green : c.secondaryLabel, fontWeight: '600' }]}>
+              {nudge ? `All ${count} chosen: deselect one first` : `${value.length} of ${count} chosen${done ? ' ✓' : ''}`}
+            </Text>
+          </View>
+          <Pressable onPress={onClose} hitSlop={8}>
+            <Text style={s.link}>Done</Text>
+          </Pressable>
+        </View>
+        {options.length > 12 && (
+          <View style={s.searchField}>
+            <TextInput value={q} onChangeText={setQ} placeholder="Search" placeholderTextColor={c.secondaryLabel} style={s.searchInput} autoCorrect={false} />
+          </View>
+        )}
+        <FlatList
+          data={shown}
+          keyExtractor={(o) => o.value}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item, index }) => {
+            const on = value.includes(item.value);
+            return (
+              <Pressable onPress={() => toggle(item.value)} style={({ pressed }) => [s.pickRow, index > 0 && s.rowDivider, pressed && s.pressed]}
+                accessibilityRole="checkbox" accessibilityState={{ checked: on }}>
+                <View style={[s.box, on && { backgroundColor: c.accent, borderColor: c.accent }]}>{on ? <Text style={s.boxMark}>✓</Text> : null}</View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.rowLabel}>{item.label}</Text>
+                  {item.detail ? <Text style={s.rowDetail} numberOfLines={2}>{item.detail}</Text> : null}
+                </View>
+                {item.badge ? <Text style={s.badge}>{item.badge}</Text> : null}
+                {item.entryId ? (
+                  <Pressable onPress={() => setPreview(item.entryId!)} hitSlop={10} style={s.info} accessibilityLabel={`About ${item.label}`}>
+                    <Text style={s.infoText}>i</Text>
+                  </Pressable>
+                ) : null}
+              </Pressable>
+            );
+          }}
+        />
+        <EntrySheet id={preview} onClose={() => setPreview(null)} />
+      </SafeAreaView>
+    </Modal>
+  );
+}

@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { derive } from '../character/engine';
 import { useCharacters } from '../character/store';
+import { Avatar } from '../components/Avatar';
 import { Button, Row, Section, close, useStyles } from '../components/ui';
 import { syncConfigured } from '../sync/client';
 import { signIn, signOut, signUp, syncNow, useSync } from '../sync/sync';
@@ -46,7 +47,7 @@ export default function Settings() {
             return (
               <Row key={c.id} first={i === 0} label={c.name || 'Unnamed'} detail={`Level ${d.level} · ${d.summary}`}
                 onPress={() => { setActive(c.id); close(); }}
-                right={c.id === activeId ? <Text style={st.check}>✓</Text> : <View />} />
+                right={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>{c.id === activeId ? <Text style={st.check}>✓</Text> : null}<Avatar uri={c.avatar} name={c.name} size={32} /></View>} />
             );
           })}
           <Row first={list.length === 0} label="New character" valueStyle={{ color: pal.accent }} onPress={() => router.push('/character/edit')} />

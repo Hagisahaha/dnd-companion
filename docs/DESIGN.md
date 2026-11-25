@@ -90,7 +90,9 @@ Nguyên tắc: **ít thao tác nhất, mượt nhất, không thiếu và không
   - Attack (`src/character/combat.ts`): vũ khí 2024 với to-hit/damage, finesse, versatile, mastery (nếu class có Weapon Mastery), proficiency theo class, Martial Arts của Monk, Unarmed Strike; ghi chú Rage damage.
   - Spell: danh sách theo class (Wizard có spellbook + prepared), giới hạn cantrip/prepared, cast trừ slot hoặc pact slot, ritual, tự bật concentration; damage cantrip theo level nhân vật, upcast theo slot, healing cộng modifier.
   - Tự động: spell luôn-prepared của class/subclass (domain, oath, patron…; không tính vào giới hạn), Rage (bật/tắt, cộng damage), nút Sneak Attack, feat Alert/Tough/Speedy/Lucky/War Caster/Great Weapon Master và fighting style Archery/Defense/Dueling; feat gốc của background tự thêm.
-  - Chưa có: hiệu ứng magic item tự động, tăng ability từ feat (vẫn nhập tay trong Bonuses), lựa chọn nhánh của subclass (ví dụ địa hình của Circle of the Land).
+  - Lựa chọn của class/species (`src/character/choices.ts`): Fighting Style, Weapon Mastery, Eldritch Invocations (lọc theo level), Metamagic, Maneuvers (Battle Master), Divine Order, Primal Order, lineage/ancestry của species 2024, Skillful + Versatile của Human, Keen Senses của Elf. Mỗi lựa chọn có bộ đếm "x/y" (cam = thiếu, xanh = đủ, đỏ = thừa); skill của class và Expertise cũng có bộ đếm.
+  - Inventory (tab Gear): tiền 5 loại, trọng lượng so với sức mang (STR × 15), attunement tối đa 3; equip giáp/khiên đổi AC, vũ khí tự thành attack. Ảnh đại diện lưu dạng JPEG 256px trong nhân vật nên đồng bộ theo.
+  - Chưa có: hiệu ứng magic item tự động, tăng ability từ feat (vẫn nhập tay trong Bonuses), lựa chọn nhánh của subclass (ví dụ địa hình của Circle of the Land), dạng Wild Shape đã biết (cần dữ liệu beast/statblock).
 
 ## 6. Hành vi đã chốt khi làm
 

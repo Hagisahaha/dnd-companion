@@ -7,13 +7,16 @@ import { RULES, getBackground, getSpecies } from '../../character/rules';
 import { useActiveCharacter, useCharacters } from '../../character/store';
 import { ABILITIES, ABILITY_NAME, ABILITY_SHORT, Stat } from '../../character/types';
 import { getEntry, getIndex } from '../../compendium/store';
+import { choiceSpecs } from '../../character/choices';
+import { Avatar } from '../../components/Avatar';
 import { openEntry } from '../../components/compendium/Entries';
+import { Gear, itemFromCompendium } from '../../components/sheet/Gear';
 import { useQuickRoll } from '../../components/QuickRoll';
 import { Button, Picker, Row, Section, Segmented, Stepper, useStyles } from '../../components/ui';
 import { useRollMode } from '../../state/roll';
 import { Palette } from '../../theme/colors';
 
-type Tab = 'actions' | 'core' | 'spells' | 'features';
+type Tab = 'actions' | 'core' | 'spells' | 'gear' | 'features';
 
 /** Feats whose numbers the app applies for you, and what it does. Keep in sync with engine.ts / combat.ts. */
 const AUTOMATED: Record<string, string> = {
@@ -46,6 +49,7 @@ export default function Sheet() {
   const d = useMemo(() => (c ? derive(c) : null), [c]);
   const atk = useMemo(() => (c && d ? attacksOf(c, d) : []), [c, d]);
   const spl = useMemo(() => (c && d ? spellsOf(c, d) : []), [c, d]);
+  const specs = useMemo(() => (c ? choiceSpecs(c) : []), [c]);
 
   if (!c || !d) {
     return (
@@ -79,11 +83,16 @@ export default function Sheet() {
       />
       <ScrollView contentContainerStyle={st.content} stickyHeaderIndices={[1]}>
         <View style={st.hero}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Avatar uri={c.avatar} name={c.name} size={52} />
+          <View style={{ flex: 1 }}>
           <Text style={st.sub}>
             Level {d.level} {d.summary.replace(/ \d+/g, (m) => (c.classes.length > 1 ? m : ''))}
             {c.classes[0]?.subclass ? ` (${c.classes[0].subclass})` : ''}
           </Text>
           <Text style={st.sub2}>{[species?.name, bg?.name].filter(Boolean).join(' · ')}</Text>
+          </View>
+          </View>
           <View style={st.stats}>
             <StatBox label="AC" value={String(d.ac.value)} onPress={() => setExplain({ title: 'Armor Class', stat: d.ac })} st={st} />
             <StatBox label="Initiative" value={fmtMod(d.initiative.value)} onPress={() => check('Initiative', d.initiative.value)} onLongPress={() => setExplain({ title: 'Initiative', stat: d.initiative })} st={st} accent />
@@ -112,7 +121,7 @@ export default function Sheet() {
 
         <View style={st.sticky}>
           <Segmented options={[{ value: 'advantage', label: 'ADV' }, { value: 'normal', label: 'Normal' }, { value: 'disadvantage', label: 'DIS' }]} value={mode} onChange={setMode} />
-          <Segmented style={{ marginTop: 8 }} options={[{ value: 'actions', label: 'Actions' }, { value: 'core', label: 'Core' }, { value: 'spells', label: 'Spells' }, { value: 'features', label: 'Features' }]} value={tab} onChange={setTab} />
+          <Segmented style={{ marginTop: 8 }} options={[{ value: 'actions', label: 'Actions' }, { value: 'core', label: 'Core' }, { value: 'spells', label: 'Spells' }, { value: 'gear', label: 'Gear' }, { value: 'features', label: 'Features' }]} value={tab} onChange={setTab} />
         </View>
 
         {tab === 'actions' && (
@@ -299,6 +308,8 @@ export default function Sheet() {
           </>
         )}
 
+        {tab === 'gear' && <Gear c={c} d={d} patch={patch} />}
+
         {tab === 'features' && (
           <>
           <Section title="Feats" style={{ marginTop: 12 }} footer="Hold a feat to remove it. Ability increases from feats go in Edit → Bonuses.">
@@ -312,6 +323,22 @@ export default function Sheet() {
             })}
             <Row first={c.feats.length === 0} label="Add feat" valueStyle={{ color: pal.accent }} onPress={() => setAddingFeat(true)} />
           </Section>
+          {specs.length > 0 && (
+            <Section title="Choices" footer="Change these in Edit → Choices.">
+              {specs.flatMap((sp) => {
+                const picks = (c.choices[sp.key] ?? []).map((v) => sp.options.find((o) => o.value === v)).filter(Boolean) as { label: string; entryId?: string }[];
+                const missing = sp.count - picks.length;
+                return [
+                  ...picks.map((o) => ({ key: `${sp.key}:${o.label}`, label: o.label, detail: sp.title, entryId: o.entryId })),
+                  ...(missing > 0 ? [{ key: `${sp.key}:missing`, label: `Choose ${missing} more`, detail: sp.title, entryId: undefined, missing: true }] : []),
+                ];
+              }).map((r, i) => (
+                <Row key={r.key} first={i === 0} label={r.label} detail={r.detail}
+                  valueStyle={'missing' in r ? { color: pal.orange } : undefined} value={'missing' in r ? '!' : undefined}
+                  onPress={r.entryId ? () => openEntry(r.entryId!) : 'missing' in r ? () => router.push({ pathname: '/character/edit', params: { id: c.id } }) : undefined} />
+              ))}
+            </Section>
+          )}
           <Section title="Features">
             {d.features.map((f, i) => (
               <Row key={`${f.source}-${f.name}-${f.level}`} first={i === 0} label={f.name} detail={`${f.source} · Level ${f.level}`} onPress={f.id ? () => openEntry(f.id!) : undefined} />
@@ -335,7 +362,11 @@ export default function Sheet() {
         title="Add Weapon"
         items={RULES.weapons.map((w) => ({ value: w.id, label: w.name, detail: `${w.category === 'simple' ? 'Simple' : 'Martial'} ${w.ranged ? 'ranged' : 'melee'} · ${w.damage}${w.versatile ? ` (${w.versatile})` : ''} ${w.damageType}${w.properties.length ? ` · ${w.properties.join(', ')}` : ''}` }))}
         value={null}
-        onPick={(itemId) => patch((x) => ({ ...x, weapons: [...x.weapons, { key: `${Date.now()}`, itemId, bonus: 0 }] }))}
+        onPick={(itemId) => {
+          // A weapon added here also goes in the bag (and the other way round, from Gear).
+          const { item, weapon } = itemFromCompendium(itemId);
+          patch((x) => ({ ...x, weapons: [...x.weapons, weapon!], inventory: [...x.inventory, item] }));
+        }}
         onClose={() => setAddingWeapon(false)}
       />
 
@@ -360,7 +391,7 @@ export default function Sheet() {
                 </View>
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
                   <Button kind="tinted" title="Details" style={{ flex: 1 }} onPress={() => { setEditingWeapon(null); openEntry(w.itemId); }} />
-                  <Button kind="destructive" title="Remove" style={{ flex: 1 }} onPress={() => { patch((x) => ({ ...x, weapons: x.weapons.filter((y) => y.key !== w.key) })); setEditingWeapon(null); }} />
+                  <Button kind="destructive" title="Remove" style={{ flex: 1 }} onPress={() => { patch((x) => ({ ...x, weapons: x.weapons.filter((y) => y.key !== w.key), inventory: x.inventory.filter((y) => y.weaponKey !== w.key) })); setEditingWeapon(null); }} />
                 </View>
               </Pressable>
             );

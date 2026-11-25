@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { derive } from '../character/engine';
 import { useActiveCharacter, useCharacters } from '../character/store';
 import { Palette } from '../theme/colors';
+import { Avatar } from './Avatar';
 import { useStyles } from './ui';
 
 /** The always-visible strip above the dice tray: who you are, HP, AC, slots. One tap to the sheet or HP pad. */
@@ -28,7 +29,10 @@ export function CharacterBar() {
   return (
     <View style={st.bar}>
       <Pressable style={st.who} onPress={() => router.push('/character/sheet')} accessibilityLabel="Open character sheet">
-        <Text style={st.name} numberOfLines={1}>{c.name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        {c.avatar ? <Avatar uri={c.avatar} name={c.name} size={26} /> : null}
+        <Text style={[st.name, { flex: 1 }]} numberOfLines={1}>{c.name}</Text>
+        </View>
         <Text style={st.cls} numberOfLines={1}>Level {d.level} · {d.summary}</Text>
         {slots.length > 0 || d.pact ? (
           <View style={st.slots}>

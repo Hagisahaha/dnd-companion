@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useActiveCharacter } from '../character/store';
+import { Avatar } from '../components/Avatar';
 import { CharacterBar } from '../components/CharacterBar';
 import { DiceTray } from '../components/dice/DiceTray';
 import { useSync } from '../sync/sync';
@@ -32,7 +33,7 @@ export default function Home() {
           accessibilityLabel="Characters and settings"
           style={({ pressed }) => ({ width: 36, height: 36, borderRadius: 18, backgroundColor: c.fill, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
         >
-          <Text style={{ fontSize: 14, fontWeight: '700', color: c.accent }}>{initials}</Text>
+          {active?.avatar ? <Avatar uri={active.avatar} name={active.name} size={36} /> : <Text style={{ fontSize: 14, fontWeight: '700', color: c.accent }}>{initials}</Text>}
           {status === 'synced' || status === 'error' || status === 'syncing' ? (
             <View style={{ position: 'absolute', right: 0, bottom: 0, width: 10, height: 10, borderRadius: 5, borderWidth: 2, borderColor: c.background, backgroundColor: status === 'error' ? c.red : status === 'syncing' ? c.secondaryLabel : c.green }} />
           ) : null}

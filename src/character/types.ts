@@ -60,6 +60,13 @@ export interface Character {
   exhaustion: number;
   concentration: string | null;
 
+  /** Picks for class/species choices (see choices.ts), keyed by choice. */
+  choices: Record<string, string[]>;
+  /** Carried items. Weapons added here also appear as attacks (linked by `weaponKey`). */
+  inventory: InventoryItem[];
+  coins: { pp: number; gp: number; ep: number; sp: number; cp: number };
+  /** Portrait as a small JPEG data URI, so it syncs with the character. */
+  avatar: string | null;
   /** Feats taken (compendium ids). Ability increases from feats go in otherBonus. */
   feats: string[];
   /** Barbarian Rage is active. */
@@ -71,6 +78,22 @@ export interface Character {
 
   overrides: Partial<Record<OverrideKey, number>>;
   notes: string;
+}
+
+export interface InventoryItem {
+  key: string;
+  /** Compendium item, or null for a custom item. */
+  itemId: string | null;
+  name: string;
+  qty: number;
+  /** Weight of one, in lb. */
+  weight: number;
+  equipped: boolean;
+  attuned: boolean;
+  requiresAttunement: boolean;
+  note: string;
+  /** Linked entry in `weapons`, if this is a weapon. */
+  weaponKey: string | null;
 }
 
 export interface Part {

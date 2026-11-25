@@ -58,6 +58,9 @@ function proficientWith(c: Character, w: WeaponRules): boolean {
     const k = getClass(cl.name);
     return (i === 0 ? k?.weapons : k?.multiclass.weapons) ?? [];
   });
+  // Cleric Protector / Druid Warden (2024) grant martial weapons.
+  const orders = [...(c.choices?.['Cleric:divine-order'] ?? []), ...(c.choices?.['Druid:primal-order'] ?? [])];
+  if (w.category === 'martial' && (orders.includes('Protector') || orders.includes('Warden'))) return true;
   return lists.flat().some((p) => {
     const t = p.toLowerCase();
     if (t === 'simple') return w.category === 'simple';
@@ -80,6 +83,8 @@ export function attacks(c: Character, d: Derived = derive(c)): Attack[] {
   const barbarian = c.classes.find((x) => x.name === 'Barbarian');
   const rage = barbarian ? tableValue(getClass('Barbarian')!, 'Rage Damage', barbarian.level) : null;
   const hasMastery = d.features.some((f) => f.name === 'Weapon Mastery');
+  // With Weapon Mastery you master specific weapons (chosen in the editor); before choosing, show none.
+  const mastered = new Set(Object.entries(c.choices ?? {}).filter(([k]) => k.endsWith(':mastery')).flatMap(([, v]) => v));
   const rogue = c.classes.find((x) => x.name === 'Rogue');
   const sneak = rogue ? tableValue(getClass('Rogue')!, 'Sneak Attack', rogue.level) : null;
   const raging = !!(rage && c.raging);
@@ -125,7 +130,7 @@ export function attacks(c: Character, d: Derived = derive(c)): Attack[] {
       damageType: w.damageType,
       range: w.range ? `${w.range} ft.` : w.properties.includes('reach') ? '10 ft.' : '5 ft.',
       properties: w.properties,
-      mastery: hasMastery ? w.mastery : null,
+      mastery: hasMastery && mastered.has(w.id) ? w.mastery : null,
       proficient,
       notes,
       extras,
