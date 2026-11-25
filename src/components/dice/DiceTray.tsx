@@ -18,8 +18,9 @@ import { toPhysical } from '../../dice/physical';
 import { RollMode, RollResult, createSecureRng, rerollDie, roll } from '../../dice/roll';
 import { Preset, useRollLog } from '../../state/history';
 import { useRollMode } from '../../state/roll';
+import { useSettings } from '../../state/settings';
 import { Palette, usePalette } from '../../theme/colors';
-import { CAMERA_FOV, CAMERA_HEIGHT, DiceScene, SceneDie, createController, startThrow } from './DiceScene';
+import { CAMERA_FOV, CAMERA_HEIGHT, DiceScene, Pose, SceneDie, createController, startThrow } from './DiceScene';
 import { DieGlyph } from './DieGlyph';
 import { PresetEditor } from './PresetEditor';
 
@@ -42,6 +43,8 @@ function haptic(style: Haptics.ImpactFeedbackStyle) {
 // Stable keys (kind + position) let React reuse the dice meshes between throws instead of remounting them.
 const sceneDice = (formula: DiceFormula, mode: RollMode): SceneDie[] =>
   toPhysical(roll(formula, mode, () => 1).dice).map((d, i) => ({ key: `${d.kind}-${i}`, kind: d.kind }));
+
+let keySeq = 0;
 
 type Sample = { x: number; y: number; t: number };
 /** Fling velocity (px/s) from the last few touch samples; 0 if the finger stopped before lifting. */
@@ -68,6 +71,10 @@ export function DiceTray() {
   const [dice, setDice] = useState<SceneDie[]>(() => sceneDice(DEFAULT_FORMULA, 'normal'));
   const presets = useRollLog((st) => st.presets);
   const [editing, setEditing] = useState<Preset | 'new' | null>(null);
+  const keepDice = useSettings((st) => st.keepDice);
+  const setKeepDice = useSettings((st) => st.setKeepDice);
+  /** Earlier throws left on the tray in keep mode (their dice are the first `kept.dice.length` scene dice). */
+  const [kept, setKept] = useState<{ dice: SceneDie[]; rolls: RollResult[] }>({ dice: [], rolls: [] });
   /** Name of the preset currently in hand, so the log says "Fireball" rather than "8d6". */
   const [presetLabel, setPresetLabel] = useState<string | null>(null);
 
@@ -126,17 +133,50 @@ export function DiceTray() {
       const f = used.length ? formulaFromHand(used, modifier) : { ...last, modifier };
       g.current.formula = f;
       g.current.used = used;
+      // Keep mode: the dice of the previous throw stay on the tray, at the spot they land.
+      let keptDice = kept.dice;
+      let keptPoses: Pose[] = ctrl.poses.slice(0, ctrl.live);
+      if (keepDice && result && dice.length > ctrl.live) {
+        if (ctrl.sim && !ctrl.track) ctrl.track = ctrl.sim.finish();
+        const tr = ctrl.track;
+        const landed = dice.slice(ctrl.live).map((_, j) => {
+          const i = ctrl.live + j;
+          const k = ctrl.trackMap[i];
+          if (!tr || k == null || k < 0) return ctrl.poses[i];
+          const f = tr.frames - 1;
+          const p = tr.positions[k];
+          const q = tr.quaternions[k];
+          return { p: [p[f * 3], p[f * 3 + 1], p[f * 3 + 2]], q: [q[f * 4], q[f * 4 + 1], q[f * 4 + 2], q[f * 4 + 3]] } as Pose;
+        });
+        keptDice = [...kept.dice, ...dice.slice(ctrl.live).map((d) => ({ ...d, key: `kept-${keySeq++}` }))];
+        keptPoses = [...keptPoses, ...landed];
+        // A tray only holds so much: drop the oldest throws past 40 dice.
+        let rolls = [...kept.rolls, result];
+        while (keptDice.length > 40 && rolls.length > 1) {
+          const n = toPhysical(rolls[0].dice).length;
+          keptDice = keptDice.slice(n);
+          keptPoses = keptPoses.slice(n);
+          rolls = rolls.slice(1);
+        }
+        setKept({ dice: keptDice, rolls });
+      } else if (!keepDice) {
+        keptDice = [];
+        keptPoses = [];
+        if (kept.dice.length) setKept({ dice: [], rolls: [] });
+      }
       ctrl.track = null;
+      ctrl.sim = null;
       ctrl.hand = toWorld(px, py);
       const next = sceneDice(f, mode);
-      ctrl.poses = next.map(() => ({ p: [ctrl.hand.x, 2.8, ctrl.hand.z], q: [0, 0, 0, 1] }));
+      ctrl.live = keptDice.length;
+      ctrl.poses = [...keptPoses, ...next.map((): Pose => ({ p: [ctrl.hand.x, 2.8, ctrl.hand.z], q: [0, 0, 0, 1] }))];
       ctrl.phase = 'holding';
-      setDice(next);
+      setDice([...keptDice, ...next]);
       setSettled(false);
       setResult(null);
       haptic(Haptics.ImpactFeedbackStyle.Soft);
     },
-    [ctrl, hand, last, modifier, mode, toWorld],
+    [ctrl, hand, last, modifier, mode, toWorld, keepDice, kept, result, dice],
   );
 
   const release = useCallback(
@@ -162,6 +202,7 @@ export function DiceTray() {
       }
       const r = roll(thrown, useRollMode.getState().consume(), rng);
       const physical = toPhysical(r.dice);
+      const live = ctrl.live;
       startThrow(
         ctrl,
         {
@@ -169,16 +210,17 @@ export function DiceTray() {
             kind: d.kind,
             value: d.value,
             start: [
-              Math.max(-bx + 1, Math.min(bx - 1, ctrl.poses[i].p[0])),
-              ctrl.poses[i].p[1],
-              Math.max(-bz + 1, Math.min(bz - 1, ctrl.poses[i].p[2])),
+              Math.max(-bx + 1, Math.min(bx - 1, ctrl.poses[live + i].p[0])),
+              ctrl.poses[live + i].p[1],
+              Math.max(-bz + 1, Math.min(bz - 1, ctrl.poses[live + i].p[2])),
             ],
-            rotation: ctrl.poses[i].q,
+            rotation: ctrl.poses[live + i].q,
           })),
           velocity: [wx, wz],
           bounds: [bx, bz],
+          obstacles: kept.dice.slice(0, live).map((d, i) => ({ kind: d.kind, pos: ctrl.poses[i].p, quat: ctrl.poses[i].q })),
         },
-        physical.map((_, i) => i),
+        [...Array.from({ length: live }, () => -1), ...physical.map((_, i) => i)],
       );
       // React updates and the history write wait a frame, so nothing competes with the dice leaving the hand.
       const label = used.length && used.length === hand.length ? presetLabel : null;
@@ -190,7 +232,7 @@ export function DiceTray() {
         setTimeout(() => useRollLog.getState().record(r, label, activeName()), 250);
       });
     },
-    [bounds, ctrl, hand, presetLabel],
+    [bounds, ctrl, hand, presetLabel, kept],
   );
 
   // Drags that start on a dice-bar icon arrive in window coordinates.
@@ -263,6 +305,17 @@ export function DiceTray() {
     });
   };
 
+  /** Sweeps kept dice off the tray, leaving the latest throw. */
+  const clearTable = () => {
+    const live = ctrl.live;
+    ctrl.poses = ctrl.poses.slice(live);
+    ctrl.trackMap = ctrl.trackMap.slice(live);
+    ctrl.live = 0;
+    setDice((d) => d.slice(live));
+    setKept({ dice: [], rolls: [] });
+    haptic(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   /** Puts a preset into the hand, ready to flick. Subtracted dice can't be held, so those presets are refused. */
   const loadPreset = (p: Preset) => {
     const f = parseFormula(p.formula);
@@ -281,14 +334,17 @@ export function DiceTray() {
     const after = toPhysical(next.dice);
     const moving = after.map((d, i) => (d.dieId === dieId ? i : -1)).filter((i) => i >= 0);
     const [bx, bz] = bounds();
+    const live = ctrl.live;
     startThrow(
       ctrl,
       {
-        dice: moving.map((i) => ({ kind: after[i].kind, value: after[i].value, start: [ctrl.poses[i].p[0], 2.5, ctrl.poses[i].p[2]] })),
+        dice: moving.map((i) => ({ kind: after[i].kind, value: after[i].value, start: [ctrl.poses[live + i].p[0], 2.5, ctrl.poses[live + i].p[2]] })),
         velocity: [(Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10],
         bounds: [bx, bz],
+        // Everything else on the tray is in the way, including this throw's other dice.
+        obstacles: dice.map((d, i) => ({ d, i })).filter(({ i }) => i < live || !moving.includes(i - live)).map(({ d, i }) => ({ kind: d.kind, pos: ctrl.poses[i].p, quat: ctrl.poses[i].q })),
       },
-      before.map((_, i) => moving.indexOf(i)),
+      [...Array.from({ length: live }, () => -1), ...before.map((_, i) => moving.indexOf(i))],
     );
     setSettled(false);
     setResult(next);
@@ -342,6 +398,11 @@ export function DiceTray() {
                 {formatFormula(result.formula)}
                 {result.mode !== 'normal' ? `  ·  ${result.mode === 'advantage' ? 'ADV' : 'DIS'}` : ''}
               </Text>
+              {kept.rolls.length > 0 && (
+                <Text style={s.tableTotal}>
+                  Tray total {kept.rolls.reduce((t, r) => t + r.total, 0) + result.total} · {kept.rolls.length + 1} rolls
+                </Text>
+              )}
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.breakdownScroll} contentContainerStyle={s.breakdown}>
                 {result.dice.map((d) => (
                   <Pressable key={d.id} onPress={() => rerollOne(d.id)} style={[s.chip, d.dropped && s.chipDropped]} hitSlop={4}>
@@ -383,9 +444,25 @@ export function DiceTray() {
           <Text style={s.handText} numberOfLines={1}>
             {hand.length ? formatFormula(formula) : 'Swipe a die up to roll it · tap to add'}
           </Text>
+          <Pressable
+            onPress={() => {
+              if (keepDice) clearTable();
+              setKeepDice(!keepDice);
+            }}
+            style={[s.keep, keepDice && s.keepOn]}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: keepDice }}
+            accessibilityLabel="Keep dice on the tray"
+          >
+            <Text style={[s.keepText, keepDice && s.keepTextOn]}>Keep</Text>
+          </Pressable>
           {hand.length > 0 || modifier !== 0 ? (
             <Pressable onPress={() => { setHand([]); setModifier(0); }} hitSlop={8}>
               <Text style={s.clear}>Clear</Text>
+            </Pressable>
+          ) : kept.dice.length > 0 ? (
+            <Pressable onPress={clearTable} hitSlop={8} accessibilityLabel="Clear the tray">
+              <Text style={s.clear}>Clear tray</Text>
             </Pressable>
           ) : (
             <Pressable onPress={() => router.push('/history')} hitSlop={8} accessibilityLabel="Roll history">
@@ -422,7 +499,7 @@ const styles = (c: Palette) =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: c.background },
     tray: { flex: 1, backgroundColor: c.tray, borderRadius: 20, overflow: 'hidden', marginHorizontal: 8 },
-    resultBox: { height: 120, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 8, marginBottom: 6 },
+    resultBox: { height: 148, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 8, marginBottom: 6 },
     total: { fontSize: 48, lineHeight: 54, fontWeight: '700', fontVariant: ['tabular-nums'], letterSpacing: -1.5 },
     formula: { fontSize: 13, color: c.secondaryLabel },
     breakdownScroll: { flexGrow: 0, alignSelf: 'stretch', marginTop: 6 },
@@ -448,6 +525,11 @@ const styles = (c: Palette) =>
     handText: { fontSize: 15, color: c.secondaryLabel, flex: 1 },
     clear: { fontSize: 15, color: c.accent },
     diceBar: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, paddingTop: 8 },
+    tableTotal: { fontSize: 13, color: c.accent, fontWeight: '600', marginTop: 2 },
+    keep: { height: 26, paddingHorizontal: 10, borderRadius: 13, borderWidth: 1.5, borderColor: c.separator, justifyContent: 'center', marginRight: 12 },
+    keepOn: { backgroundColor: c.accent, borderColor: c.accent },
+    keepText: { fontSize: 13, fontWeight: '600', color: c.secondaryLabel },
+    keepTextOn: { color: c.onAccent },
     presetBar: { flexGrow: 0, marginHorizontal: -12 },
     presets: { paddingHorizontal: 12, gap: 8, alignItems: 'center' },
     preset: { height: 36, paddingHorizontal: 12, borderRadius: 10, backgroundColor: c.fill, justifyContent: 'center', maxWidth: 160 },

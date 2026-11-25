@@ -22,6 +22,8 @@ export interface ThrowInput {
   velocity: [number, number];
   /** Half extents of the tray floor (x, z). */
   bounds: [number, number];
+  /** Dice already resting on the tray (kept from earlier throws): solid, but they don't move. */
+  obstacles?: { kind: DieKind; pos: Vec3; quat: Quat }[];
   /** Seed for spin/jitter so replays are stable in tests. */
   random?: () => number;
 }
@@ -95,6 +97,12 @@ export class ThrowSim {
     addPlane([0, 0, -bz], [0, 1, 0], 0); // top
     addPlane([0, 0, bz], [0, 1, 0], Math.PI); // bottom
     addPlane([0, 12, 0], [1, 0, 0], Math.PI / 2); // lid
+    for (const o of input.obstacles ?? []) {
+      const b = new CANNON.Body({ mass: 0, material: diceMat, shape: physicsShape(o.kind) });
+      b.position.set(...o.pos);
+      b.quaternion.set(...o.quat);
+      world.addBody(b);
+    }
 
     this.bodies = input.dice.map((d) => {
       const body = new CANNON.Body({

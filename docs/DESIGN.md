@@ -100,6 +100,7 @@ Nguyên tắc: **ít thao tác nhất, mượt nhất, không thiếu và không
 - Khi tạo nhân vật, standard array và +2/+1 của background tự xếp theo ability chính của class; người chơi vẫn đổi được.
 - Nat 20 trên attack: nút roll damage tự gấp đôi số xúc xắc (luật 2024).
 
+- Nút **Keep** cạnh History: bật thì xúc xắc đã lăn nằm lại trên khay với số của chúng (làm vật cản cho lượt sau), hiện "Tray total" cộng dồn; **Clear tray** dọn đi. Lưu lại giữa các lần mở app.
 - Lịch sử roll lưu 200 roll gần nhất (khay, sheet, mô tả luật), chạm một dòng để roll lại; preset là chip phía trên hàng xúc xắc.
 
 ## 7. Còn chờ

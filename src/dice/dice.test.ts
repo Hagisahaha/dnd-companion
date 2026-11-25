@@ -141,3 +141,33 @@ describe('simulateThrow', () => {
     expect(track.impacts.length).toBeGreaterThan(0);
   });
 });
+
+describe('kept dice as obstacles', () => {
+  it('new dice still land on their values and never end up inside a kept die', () => {
+    const obstacles = [
+      { kind: 'd20' as const, pos: [0, 1, 0] as [number, number, number], quat: [0, 0, 0, 1] as [number, number, number, number] },
+      { kind: 'd6' as const, pos: [1.5, 0.95, -2] as [number, number, number], quat: [0, 0, 0, 1] as [number, number, number, number] },
+    ];
+    for (let seed = 1; seed <= 10; seed++) {
+      const track = simulateThrow({
+        dice: [{ kind: 'd8', value: (seed % 8) + 1, start: [0, 3, 5] }, { kind: 'd12', value: (seed % 12) + 1, start: [1, 3, 5] }],
+        velocity: [0, -28],
+        bounds: [4.5, 7.5],
+        obstacles,
+        random: seeded(seed),
+      });
+      track.positions.forEach((p, i) => {
+        const o = (track.frames - 1) * 3;
+        for (const ob of obstacles) {
+          const dist = Math.hypot(p[o] - ob.pos[0], p[o + 1] - ob.pos[1], p[o + 2] - ob.pos[2]);
+          expect(dist, `die ${i} vs ${ob.kind}`).toBeGreaterThan(1.2);
+        }
+        const kind = (['d8', 'd12'] as const)[i];
+        const shape = getShape(kind);
+        const q = Array.from(track.quaternions[i].slice((track.frames - 1) * 4, track.frames * 4)) as [number, number, number, number];
+        const normals = shape.faces.map((f) => rotateVec(q, faceNormal(shape, f)));
+        expect(shape.faceValue[readingFace(shape, normals)]).toBe(i === 0 ? (seed % 8) + 1 : (seed % 12) + 1);
+      });
+    }
+  });
+});

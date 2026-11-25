@@ -43,6 +43,8 @@ export interface DiceController {
   sim: ThrowSim | null;
   /** Playback frame at which the corrected track took over (blended in over a few frames). */
   correctedAt: number;
+  /** Scene dice before this index are kept on the tray from earlier throws and never move. */
+  live: number;
   /** For each scene die, its index in the throw, or -1 if it stays still. */
   trackMap: number[];
   trackStart: number;
@@ -52,7 +54,7 @@ export interface DiceController {
 }
 
 export function createController(poses: Pose[] = []): DiceController {
-  return { phase: 'rest', hand: { x: 0, z: 0 }, poses, track: null, sim: null, correctedAt: 0, trackMap: [], trackStart: 0, impactCursor: 0 };
+  return { phase: 'rest', hand: { x: 0, z: 0 }, poses, track: null, sim: null, correctedAt: 0, live: 0, trackMap: [], trackStart: 0, impactCursor: 0 };
 }
 
 /**
@@ -110,11 +112,13 @@ export function DiceScene({ dice, ctrl, skin }: { dice: SceneDie[]; ctrl: DiceCo
     const c = ctrl;
     if (c.phase === 'holding') {
       dice.forEach((_, i) => {
-        const [ox, oz] = heldOffset(i);
-        euler.set(t * 3.1 + i * 1.7, t * 2.3 + i * 0.9, t * 1.7 + i * 2.1);
+        if (i < c.live) return; // kept dice stay where they landed
+        const h = i - c.live;
+        const [ox, oz] = heldOffset(h);
+        euler.set(t * 3.1 + h * 1.7, t * 2.3 + h * 0.9, t * 1.7 + h * 2.1);
         quat.setFromEuler(euler);
         c.poses[i] = {
-          p: [c.hand.x + ox, HOLD_HEIGHT + Math.sin(t * 11 + i) * 0.18, c.hand.z + oz],
+          p: [c.hand.x + ox, HOLD_HEIGHT + Math.sin(t * 11 + h) * 0.18, c.hand.z + oz],
           q: [quat.x, quat.y, quat.z, quat.w],
         };
       });
