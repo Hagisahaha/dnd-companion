@@ -60,6 +60,11 @@ export interface Character {
   exhaustion: number;
   concentration: string | null;
 
+  /** Weapons carried. `bonus` is a magic +X to attack and damage. */
+  weapons: { key: string; itemId: string; bonus: number }[];
+  /** Spells known/in spellbook per class; `prepared` is what you can cast today (cantrips are always prepared). */
+  spells: { id: string; className: string; prepared: boolean }[];
+
   overrides: Partial<Record<OverrideKey, number>>;
   notes: string;
 }

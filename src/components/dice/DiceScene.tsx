@@ -1,3 +1,10 @@
+/*
+ * Dice rendering uses an imperative, mutable controller shared with the three.js render
+ * loop (it works like a ref: poses are written 60×/s without re-rendering). That pattern is
+ * outside React Compiler's model, so this file opts out of the compiler and its lint rules.
+ */
+/* eslint-disable react-hooks/immutability */
+'use no memo';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
@@ -39,8 +46,8 @@ export interface DiceController {
   onSettled?: () => void;
 }
 
-export function createController(): DiceController {
-  return { phase: 'rest', hand: { x: 0, z: 0 }, poses: [], track: null, trackMap: [], trackStart: 0, impactCursor: 0 };
+export function createController(poses: Pose[] = []): DiceController {
+  return { phase: 'rest', hand: { x: 0, z: 0 }, poses, track: null, trackMap: [], trackStart: 0, impactCursor: 0 };
 }
 
 /** Where the i-th held die floats relative to the finger. */

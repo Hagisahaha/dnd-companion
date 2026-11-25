@@ -67,7 +67,7 @@ Nguyên tắc: **ít thao tác nhất, mượt nhất, không thiếu và không
 | Cử chỉ | Hành động |
 |---|---|
 | Vuốt lên từ thanh thông số | Mở character sheet đầy đủ (bottom sheet) |
-| Vuốt trái/phải trên sheet | Chuyển tab: Core · Actions · Spells · Features · Notes |
+| Segmented trên sheet | Chuyển tab: Actions · Core · Spells · Features (Actions mặc định vì dùng nhiều nhất trong combat) |
 | Chạm HP | Bàn phím số: `-7` là damage, `+5` là heal, `t8` là temp HP |
 | Chạm skill / save / attack | Roll ngay trên overlay |
 | Nhấn giữ một thứ bất kỳ | Xem chi tiết rule/feature/spell |
@@ -87,7 +87,9 @@ Nguyên tắc: **ít thao tác nhất, mượt nhất, không thiếu và không
   - Trong text, xúc xắc (`8d6`, `+5`) bấm vào là roll ngay; link mở mục tương ứng.
 - **Rules engine** (`src/character/engine.ts`): thuần TypeScript, có unit test. Mọi số được tính ra kèm "nguồn" (ví dụ AC 16 = 10 + DEX 2 + Shield 2 + …); nhấn giữ một con số trên sheet để xem. Số nào cũng override tay được.
   - Đã có: ability, save, skill (proficient/expertise, Jack of All Trades), AC (giáp, Unarmored Defense của Barbarian/Monk/Draconic), speed, HP, hit dice, spell DC/attack, slot (đơn class, multiclass, third caster, pact), resource có giới hạn số lần dùng cùng cách hồi khi nghỉ, damage/heal/temp HP, concentration DC, death save, short/long rest, exhaustion (−2 cho mọi d20 test).
-  - Chưa có: feat và hiệu ứng magic item tự động (hiện nhập tay qua mục Bonuses), danh sách spell đã prepare, vũ khí và attack.
+  - Attack (`src/character/combat.ts`): vũ khí 2024 với to-hit/damage, finesse, versatile, mastery (nếu class có Weapon Mastery), proficiency theo class, Martial Arts của Monk, Unarmed Strike; ghi chú Rage damage.
+  - Spell: danh sách theo class (Wizard có spellbook + prepared), giới hạn cantrip/prepared, cast trừ slot hoặc pact slot, ritual, tự bật concentration; damage cantrip theo level nhân vật, upcast theo slot, healing cộng modifier.
+  - Chưa có: feat và hiệu ứng magic item tự động (hiện nhập tay qua mục Bonuses), spell luôn-prepared của subclass, Rage/Sneak Attack tự cộng vào damage.
 
 ## 6. Hành vi đã chốt khi làm
 

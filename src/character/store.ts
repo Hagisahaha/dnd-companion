@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { newCharacter } from './engine';
+import { migrate, newCharacter } from './engine';
 import type { Character } from './types';
 
 interface CharacterState {
@@ -41,6 +41,11 @@ export const useCharacters = create<CharacterState>()(
     }),
     {
       name: 'characters-v1',
+      version: 2,
+      migrate: (persisted) => {
+        const p = persisted as { characters?: Record<string, Character>; activeId?: string | null };
+        return { ...p, characters: Object.fromEntries(Object.entries(p.characters ?? {}).map(([k, v]) => [k, migrate(v)])) } as never;
+      },
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (s) => ({ characters: s.characters, activeId: s.activeId }),
       onRehydrateStorage: () => () => useCharacters.setState({ hydrated: true }),

@@ -7,7 +7,7 @@ import { Palette, usePalette } from '../../theme/colors';
 import { useQuickRoll } from '../QuickRoll';
 
 /* 5etools entry trees are loosely typed JSON. */
-type E = any; // eslint-disable-line @typescript-eslint/no-explicit-any
+type E = any;
 
 const ABIL: Record<string, string> = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 

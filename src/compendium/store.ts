@@ -4,7 +4,6 @@
  * file the first time one of its entries is shown.
  */
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 const LOADERS = {
   spell: () => require('../data/compendium/spell.json'),
   item: () => require('../data/compendium/item.json'),
@@ -18,7 +17,6 @@ const LOADERS = {
   classfeature: () => require('../data/compendium/classfeature.json'),
   subclassfeature: () => require('../data/compendium/subclassfeature.json'),
 } as const;
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 export type Category = keyof typeof LOADERS;
 

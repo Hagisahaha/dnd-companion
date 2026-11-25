@@ -57,15 +57,28 @@ export interface ArmorRules {
   stealthDisadvantage: boolean;
 }
 
+export interface WeaponRules {
+  id: string;
+  name: string;
+  category: 'simple' | 'martial';
+  ranged: boolean;
+  damage: string;
+  versatile: string | null;
+  damageType: string;
+  properties: string[];
+  mastery: string | null;
+  range: string | null;
+}
+
 interface RulesData {
   classes: ClassRules[];
   species: SpeciesRules[];
   backgrounds: BackgroundRules[];
   armor: ArmorRules[];
+  weapons: WeaponRules[];
   skills: { name: string; ability: Ability }[];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 export const RULES: RulesData = require('../data/rules.json');
 
 export const getClass = (name: string) => RULES.classes.find((c) => c.name === name) ?? null;
@@ -73,6 +86,7 @@ export const getSpecies = (id: string | null) => (id ? RULES.species.find((s) =>
 export const getBackground = (id: string | null) => (id ? RULES.backgrounds.find((b) => b.id === id) ?? null : null);
 export const getArmor = (id: string | null) => (id ? RULES.armor.find((a) => a.id === id) ?? null : null);
 export const SKILLS = RULES.skills;
+export const getWeapon = (id: string) => RULES.weapons.find((w) => w.id === id) ?? null;
 
 /** Value of a class table column at a class level, e.g. ("Rages", 5) -> "3". */
 export function tableValue(cls: ClassRules, label: string, level: number): string | null {

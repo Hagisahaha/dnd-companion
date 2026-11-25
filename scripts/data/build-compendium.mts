@@ -192,7 +192,20 @@ for (const file of Object.values(spellIndex)) {
         ['Classes', [...new Set<string>(classes)].sort().join(', ')],
       ],
       entries: [...(s.entries ?? []), ...(s.entriesHigherLevel ?? [])],
-      data: { level: s.level, school, concentration, ritual, classes: [...new Set(classes)] },
+      data: {
+        level: s.level, school, concentration, ritual, classes: [...new Set(classes)],
+        attack: s.spellAttack?.[0] ?? null, // 'M' | 'R'
+        save: s.savingThrow?.[0] ?? null, // 'dexterity' ...
+        damage: s.damageInflict ?? null,
+        heal: (s.miscTags ?? []).includes('HL'),
+        // Cantrip dice by character level, e.g. [{ label, scaling: { 1: '1d10', 5: '2d10' } }]
+        scaling: s.scalingLevelDice ? [].concat(s.scalingLevelDice) : null,
+        // Upcasting from "{@scaledamage 8d6|3-9|1d6}": base dice, plus `inc` per slot level above `from`.
+        upcast: (() => {
+          const m = /\{@scale(?:damage|dice) ([^|}]+)\|(\d+)-\d+\|([^|}]+)/.exec(JSON.stringify(s.entriesHigherLevel ?? []));
+          return m ? { base: m[1].replace(/\s/g, ''), from: Number(m[2]), inc: m[3].replace(/\s/g, '') } : null;
+        })(),
+      },
     });
   }
 }

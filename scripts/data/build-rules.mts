@@ -151,16 +151,33 @@ const armor = read('items-base.json').baseitem
   }))
   .sort((a: Json, b: Json) => a.ac - b.ac);
 
+const PROP: Record<string, string> = { A: 'ammunition', F: 'finesse', H: 'heavy', L: 'light', LD: 'loading', R: 'reach', T: 'thrown', '2H': 'two-handed', V: 'versatile' };
+const weapons = read('items-base.json').baseitem
+  .filter((i: Json) => i.source === 'XPHB' && i.weapon)
+  .map((i: Json) => ({
+    id: id('item', i.name, i.source),
+    name: i.name,
+    category: i.weaponCategory as 'simple' | 'martial',
+    ranged: stripSrc(i.type) === 'R',
+    damage: i.dmg1,
+    versatile: i.dmg2 ?? null,
+    damageType: ({ B: 'bludgeoning', P: 'piercing', S: 'slashing' } as Record<string, string>)[i.dmgType] ?? i.dmgType,
+    properties: (i.property ?? []).map((p: Json) => PROP[stripSrc(typeof p === 'string' ? p : p.uid)]).filter(Boolean),
+    mastery: i.mastery ? stripSrc(i.mastery[0]) : null,
+    range: i.range ?? null,
+  }))
+  .sort((a: Json, b: Json) => a.name.localeCompare(b.name));
+
 const skills = read('skills.json').skill
   .filter((s: Json) => s.source === 'XPHB')
   .map((s: Json) => ({ name: s.name, ability: s.ability as Ability }))
   .sort((a: Json, b: Json) => a.name.localeCompare(b.name));
 
 mkdirSync('src/data', { recursive: true });
-writeFileSync('src/data/rules.json', JSON.stringify({ classes, species, backgrounds, armor, skills }));
+writeFileSync('src/data/rules.json', JSON.stringify({ classes, species, backgrounds, armor, weapons, skills }));
 console.log({
   classes: classes.map((c) => `${c.name}(${c.subclasses.length})`).join(' '),
-  species: species.length, backgrounds: backgrounds.length, armor: armor.length, skills: skills.length,
+  species: species.length, backgrounds: backgrounds.length, armor: armor.length, weapons: weapons.length, skills: skills.length,
   unresolvedSubclassFeatures: classes.flatMap((c) => c.subclasses.flatMap((s: Json) => s.features.filter((f: Json) => !f.id).map((f: Json) => `${c.name}/${s.shortName}/${f.name}`))).slice(0, 10),
 });
 void ABILS; void ABIL_NAME;

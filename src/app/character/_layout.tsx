@@ -16,6 +16,8 @@ export default function CharacterLayout() {
       <Stack.Screen name="sheet" options={{ title: '' }} />
       <Stack.Screen name="edit" options={{ presentation: 'modal' }} />
       <Stack.Screen name="hp" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="cast" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="spells" options={{ presentation: 'modal' }} />
     </Stack>
   );
 }

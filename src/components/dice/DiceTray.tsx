@@ -1,7 +1,14 @@
+/*
+ * Dice rendering uses an imperative, mutable controller shared with the three.js render
+ * loop (it works like a ref: poses are written 60×/s without re-rendering). That pattern is
+ * outside React Compiler's model, so this file opts out of the compiler and its lint rules.
+ */
+/* eslint-disable react-hooks/immutability, react-hooks/purity */
+'use no memo';
 import { Canvas } from '@react-three/fiber';
 import * as Crypto from 'expo-crypto';
 import * as Haptics from 'expo-haptics';
-import { Suspense, useCallback, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import { DIE_SIDES, DieSides, DiceFormula, formatFormula, formulaFromHand } from '../../dice/notation';
@@ -40,14 +47,12 @@ export function DiceTray() {
   const [settled, setSettled] = useState(true);
   const [dice, setDice] = useState<SceneDie[]>(() => sceneDice(DEFAULT_FORMULA, 'normal'));
 
-  const ctrl = useRef(createController()).current;
+  // Opening pose: one d20 resting in the middle, inviting a flick.
+  const [ctrl] = useState(() => createController([{ p: [0, 1.0, 1], q: [0.31, 0.12, 0.2, 0.92] }]));
   const size = useRef({ w: 1, h: 1 });
   const lastImpact = useRef(0);
 
-  // Opening pose: one d20 resting in the middle, inviting a flick.
-  if (ctrl.poses.length === 0) ctrl.poses = [{ p: [0, 1.0, 1], q: [0.31, 0.12, 0.2, 0.92] }];
-
-  const formula = hand.length ? formulaFromHand(hand, modifier) : { ...last, modifier };
+  const formula = useMemo(() => (hand.length ? formulaFromHand(hand, modifier) : { ...last, modifier }), [hand, last, modifier]);
 
   const bounds = useCallback((): [number, number] => {
     const halfZ = Math.tan(((CAMERA_FOV / 2) * Math.PI) / 180) * CAMERA_HEIGHT;
@@ -65,13 +70,15 @@ export function DiceTray() {
     [bounds],
   );
 
-  ctrl.onImpact = (strength) => {
-    const now = Date.now();
-    if (now - lastImpact.current < 45) return;
-    lastImpact.current = now;
-    haptic(strength > 12 ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
-  };
-  ctrl.onSettled = () => setSettled(true);
+  useEffect(() => {
+    ctrl.onImpact = (strength) => {
+      const now = Date.now();
+      if (now - lastImpact.current < 45) return;
+      lastImpact.current = now;
+      haptic(strength > 12 ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
+    };
+    ctrl.onSettled = () => setSettled(true);
+  }, [ctrl]);
 
   // ---- gesture: hold to lift, drag to carry, flick to throw ----
   const g = useRef({ x0: 0, y0: 0, lifted: false, timer: 0 as unknown as ReturnType<typeof setTimeout>, samples: [] as { x: number; y: number; t: number }[] });
@@ -136,7 +143,7 @@ export function DiceTray() {
       setHand([]);
       setResult(r);
     },
-    [bounds, ctrl, formula, hand, mode],
+    [bounds, ctrl, formula, hand],
   );
 
   const pan = usePanGesture({

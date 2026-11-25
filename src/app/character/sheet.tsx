@@ -1,17 +1,18 @@
 import { router, Stack } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { attacks as attacksOf, spellListFor, spells as spellsOf } from '../../character/combat';
 import { derive, fmtMod, longRest, shortRest } from '../../character/engine';
-import { getBackground, getSpecies } from '../../character/rules';
+import { RULES, getBackground, getSpecies } from '../../character/rules';
 import { useActiveCharacter, useCharacters } from '../../character/store';
 import { ABILITIES, ABILITY_NAME, ABILITY_SHORT, Stat } from '../../character/types';
 import { openEntry } from '../../components/compendium/Entries';
 import { useQuickRoll } from '../../components/QuickRoll';
-import { Button, Row, Section, Segmented, useStyles } from '../../components/ui';
+import { Button, Picker, Row, Section, Segmented, Stepper, useStyles } from '../../components/ui';
 import { useRollMode } from '../../state/roll';
 import { Palette } from '../../theme/colors';
 
-type Tab = 'core' | 'spells' | 'features';
+type Tab = 'actions' | 'core' | 'spells' | 'features';
 
 const CONDITIONS = ['Blinded', 'Charmed', 'Deafened', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified', 'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious'];
 
@@ -21,10 +22,14 @@ export default function Sheet() {
   const quickRoll = useQuickRoll();
   const mode = useRollMode((s) => s.mode);
   const setMode = useRollMode((s) => s.set);
-  const [tab, setTab] = useState<Tab>('core');
+  const [tab, setTab] = useState<Tab>('actions');
   const [explain, setExplain] = useState<{ title: string; stat: Stat } | null>(null);
+  const [addingWeapon, setAddingWeapon] = useState(false);
+  const [editingWeapon, setEditingWeapon] = useState<string | null>(null);
   const [st, pal] = useStyles(styles);
   const d = useMemo(() => (c ? derive(c) : null), [c]);
+  const atk = useMemo(() => (c && d ? attacksOf(c, d) : []), [c, d]);
+  const spl = useMemo(() => (c && d ? spellsOf(c, d) : []), [c, d]);
 
   if (!c || !d) {
     return (
@@ -91,8 +96,44 @@ export default function Sheet() {
 
         <View style={st.sticky}>
           <Segmented options={[{ value: 'advantage', label: 'ADV' }, { value: 'normal', label: 'Normal' }, { value: 'disadvantage', label: 'DIS' }]} value={mode} onChange={setMode} />
-          <Segmented style={{ marginTop: 8 }} options={[{ value: 'core', label: 'Core' }, { value: 'spells', label: 'Spells' }, { value: 'features', label: 'Features' }]} value={tab} onChange={setTab} />
+          <Segmented style={{ marginTop: 8 }} options={[{ value: 'actions', label: 'Actions' }, { value: 'core', label: 'Core' }, { value: 'spells', label: 'Spells' }, { value: 'features', label: 'Features' }]} value={tab} onChange={setTab} />
         </View>
+
+        {tab === 'actions' && (
+          <>
+            <Section title="Attacks" style={{ marginTop: 12 }} footer="Tap to roll the attack; the damage button follows on the result. Hold a weapon to edit it.">
+              {atk.map((a, i) => (
+                <View key={a.key}>
+                  <Row first={i === 0} label={a.name}
+                    detail={[a.range, `${a.damage} ${a.damageType}`, a.mastery ? `Mastery: ${a.mastery}` : '', ...a.notes].filter(Boolean).join(' · ')}
+                    value={fmtMod(a.toHit.value)} valueStyle={a.proficient ? st.profValue : undefined}
+                    onPress={() => quickRoll(`1d20${a.toHit.value - 2 * c.exhaustion >= 0 ? '+' : ''}${a.toHit.value - 2 * c.exhaustion}`, { label: `${a.name} attack`, mode: 'shared', then: { label: `Roll damage ${a.damage}`, formula: a.damage } })}
+                    onLongPress={() => (a.key === 'unarmed' ? setExplain({ title: a.name, stat: a.toHit }) : setEditingWeapon(a.key))}
+                    right={<View />} />
+                  {a.twoHanded && (
+                    <Row label="  Two-handed" detail={`${a.twoHanded} ${a.damageType}`} value={fmtMod(a.toHit.value)} valueStyle={a.proficient ? st.profValue : undefined}
+                      onPress={() => quickRoll(`1d20${a.toHit.value - 2 * c.exhaustion >= 0 ? '+' : ''}${a.toHit.value - 2 * c.exhaustion}`, { label: `${a.name} (two-handed)`, mode: 'shared', then: { label: `Roll damage ${a.twoHanded}`, formula: a.twoHanded! } })}
+                      right={<View />} />
+                  )}
+                </View>
+              ))}
+              <Row label="Add weapon" valueStyle={{ color: pal.accent }} onPress={() => setAddingWeapon(true)} />
+            </Section>
+
+            {spl.some((x) => x.prepared && (x.attack || x.save || x.effects(x.level).length)) && (
+              <Section title="Spell Attacks & Saves" footer="Tap to cast. Hold to read the spell.">
+                {spl.filter((x) => x.prepared && (x.attack || x.save || x.effects(x.level).length)).map((x, i) => (
+                  <Row key={x.id + x.className} first={i === 0} label={x.name}
+                    detail={[x.level ? `Level ${x.level}` : 'Cantrip', x.time, x.effects(x.level)[0]?.formula].filter(Boolean).join(' · ')}
+                    value={x.attack ? fmtMod(x.attack.value) : x.save ? `DC ${x.save.dc}` : ''}
+                    valueStyle={st.profValue}
+                    onPress={() => router.push({ pathname: '/character/cast', params: { id: x.id, cls: x.className } })}
+                    onLongPress={() => openEntry(x.id)} right={<View />} />
+                ))}
+              </Section>
+            )}
+          </>
+        )}
 
         {tab === 'core' && (
           <>
@@ -105,7 +146,7 @@ export default function Sheet() {
                 </Pressable>
               ))}
             </View>
-            <Text style={st.hint}>Tap to roll · hold to see how it's calculated</Text>
+            <Text style={st.hint}>Tap to roll · hold to see how it&apos;s calculated</Text>
 
             <Section title="Saving Throws">
               {ABILITIES.map((a, i) => (
@@ -173,8 +214,6 @@ export default function Sheet() {
               <Section key={sc.className} title={`${sc.className} Spellcasting`} style={i === 0 ? { marginTop: 12 } : undefined}>
                 <Row first label="Spell Save DC" value={String(sc.dc.value)} onLongPress={() => setExplain({ title: 'Spell Save DC', stat: sc.dc })} onPress={() => setExplain({ title: 'Spell Save DC', stat: sc.dc })} right={<View />} />
                 <Row label="Spell Attack" value={fmtMod(sc.attack.value)} valueStyle={st.profValue} onPress={() => check('Spell attack', sc.attack.value)} onLongPress={() => setExplain({ title: 'Spell Attack', stat: sc.attack })} right={<View />} />
-                <Row label="Cantrips" value={String(sc.cantrips)} />
-                <Row label="Prepared Spells" value={String(sc.prepared)} />
               </Section>
             ))}
             {d.slots.length > 0 && (
@@ -195,6 +234,38 @@ export default function Sheet() {
                 </View>
               </Section>
             )}
+            {c.classes.map((cl) => {
+              const list = spellListFor(cl.name, cl.subclass);
+              const sc = d.spellcasting.find((x) => x.className === cl.name);
+              if (!list || !sc) return null;
+              const mine = spl.filter((x) => x.className === cl.name);
+              const cantrips = mine.filter((x) => x.level === 0).length;
+              const prepared = mine.filter((x) => x.level > 0 && x.prepared).length;
+              const levels = [...new Set(mine.map((x) => x.level))];
+              return (
+                <View key={cl.name}>
+                  <Text style={st.counts}>
+                    {cl.name} · Cantrips <Text style={cantrips > sc.cantrips ? st.over : undefined}>{cantrips}/{sc.cantrips}</Text> · Prepared{' '}
+                    <Text style={prepared > sc.prepared ? st.over : undefined}>{prepared}/{sc.prepared}</Text>
+                  </Text>
+                  {levels.map((lvl) => (
+                    <Section key={lvl} title={lvl === 0 ? 'Cantrips' : `Level ${lvl}`}>
+                      {mine.filter((x) => x.level === lvl).map((x, i) => (
+                        <Row key={x.id} first={i === 0} label={x.name}
+                          detail={[x.time, x.range, x.concentration ? 'Concentration' : '', x.ritual ? 'Ritual' : '', !x.prepared ? 'Not prepared' : ''].filter(Boolean).join(' · ')}
+                          value={x.attack ? fmtMod(x.attack.value) : x.save ? `DC ${x.save.dc}` : x.effects(x.level)[0]?.formula ?? ''}
+                          valueStyle={x.prepared ? st.profValue : st.dim}
+                          onPress={() => router.push({ pathname: '/character/cast', params: { id: x.id, cls: x.className } })}
+                          onLongPress={() => openEntry(x.id)} right={<View />} />
+                      ))}
+                    </Section>
+                  ))}
+                  <View style={{ marginHorizontal: 16, marginBottom: 22 }}>
+                    <Button kind="tinted" title={mine.length ? `Manage ${cl.name} Spells` : `Add ${cl.name} Spells`} onPress={() => router.push({ pathname: '/character/spells', params: { cls: cl.name } })} />
+                  </View>
+                </View>
+              );
+            })}
           </>
         )}
 
@@ -206,6 +277,44 @@ export default function Sheet() {
           </Section>
         )}
       </ScrollView>
+
+      <Picker
+        visible={addingWeapon}
+        title="Add Weapon"
+        items={RULES.weapons.map((w) => ({ value: w.id, label: w.name, detail: `${w.category === 'simple' ? 'Simple' : 'Martial'} ${w.ranged ? 'ranged' : 'melee'} · ${w.damage}${w.versatile ? ` (${w.versatile})` : ''} ${w.damageType}${w.properties.length ? ` · ${w.properties.join(', ')}` : ''}` }))}
+        value={null}
+        onPick={(itemId) => patch((x) => ({ ...x, weapons: [...x.weapons, { key: `${Date.now()}`, itemId, bonus: 0 }] }))}
+        onClose={() => setAddingWeapon(false)}
+      />
+
+      <Modal visible={!!editingWeapon} transparent animationType="fade" onRequestClose={() => setEditingWeapon(null)}>
+        <Pressable style={st.scrim} onPress={() => setEditingWeapon(null)}>
+          {editingWeapon && (() => {
+            const w = c.weapons.find((x) => x.key === editingWeapon);
+            const a = atk.find((x) => x.key === editingWeapon);
+            if (!w || !a) return null;
+            return (
+              <Pressable style={st.explain} onPress={() => {}}>
+                <Text style={st.explainTitle}>{a.name}</Text>
+                {a.toHit.parts.map((p, i) => (
+                  <View key={i} style={st.explainRow}>
+                    <Text style={st.explainLabel}>{p.label}</Text>
+                    <Text style={st.explainVal}>{fmtMod(p.value)}</Text>
+                  </View>
+                ))}
+                <View style={[st.explainRow, st.divider, { paddingTop: 10, alignItems: 'center' }]}>
+                  <Text style={st.explainLabel}>Magic bonus</Text>
+                  <Stepper value={w.bonus} min={0} max={3} format={(v) => `+${v}`} onChange={(bonus) => patch((x) => ({ ...x, weapons: x.weapons.map((y) => (y.key === w.key ? { ...y, bonus } : y)) }))} />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                  <Button kind="tinted" title="Details" style={{ flex: 1 }} onPress={() => { setEditingWeapon(null); openEntry(w.itemId); }} />
+                  <Button kind="destructive" title="Remove" style={{ flex: 1 }} onPress={() => { patch((x) => ({ ...x, weapons: x.weapons.filter((y) => y.key !== w.key) })); setEditingWeapon(null); }} />
+                </View>
+              </Pressable>
+            );
+          })()}
+        </Pressable>
+      </Modal>
 
       <Modal visible={!!explain} transparent animationType="fade" onRequestClose={() => setExplain(null)}>
         <Pressable style={st.scrim} onPress={() => setExplain(null)}>
@@ -287,6 +396,9 @@ const styles = (c: Palette) =>
     abilityScore: { fontSize: 13, color: c.secondaryLabel, fontVariant: ['tabular-nums'] },
     hint: { fontSize: 12, color: c.tertiaryLabel, textAlign: 'center', marginTop: 6, marginBottom: 16 },
     profValue: { color: c.accent, fontWeight: '600' },
+    dim: { color: c.tertiaryLabel },
+    counts: { fontSize: 13, color: c.secondaryLabel, marginHorizontal: 32, marginBottom: 8, marginTop: 4 },
+    over: { color: c.red, fontWeight: '700' },
     resRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, gap: 12 },
     divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.separator },
     resName: { fontSize: 17, color: c.label },

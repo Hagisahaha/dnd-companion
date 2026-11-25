@@ -1,3 +1,10 @@
+/*
+ * Dice rendering uses an imperative, mutable controller shared with the three.js render
+ * loop (it works like a ref: poses are written 60×/s without re-rendering). That pattern is
+ * outside React Compiler's model, so this file opts out of the compiler and its lint rules.
+ */
+/* eslint-disable react-hooks/immutability */
+'use no memo';
 import { Canvas } from '@react-three/fiber';
 import * as Crypto from 'expo-crypto';
 import * as Haptics from 'expo-haptics';
@@ -36,7 +43,7 @@ export function QuickRollProvider({ children }: { children: ReactNode }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [shown, setShown] = useState<{ r: RollResult; opts: QuickRollOptions; dice: SceneDie[]; settled: boolean; key: number } | null>(null);
-  const ctrl = useRef(createController()).current;
+  const [ctrl] = useState(() => createController());
   const lastImpact = useRef(0);
 
   const bounds = useCallback((): [number, number] => {

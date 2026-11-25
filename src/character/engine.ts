@@ -345,6 +345,11 @@ export function longRest(c: Character): Character {
   });
 }
 
+/** Fills fields added after a character was first saved, so old saves keep loading. */
+export function migrate(c: Character): Character {
+  return { ...newCharacter(c.id), ...c, weapons: c.weapons ?? [], spells: c.spells ?? [] };
+}
+
 export function newCharacter(id: string): Character {
   const now = Date.now();
   return {
@@ -354,7 +359,7 @@ export function newCharacter(id: string): Character {
     backgroundBonus: {}, otherBonus: {}, skills: {}, extraSaves: [],
     armorId: null, shield: false, acBonus: 0, hpPerLevelBonus: 0,
     hp: { current: 0, temp: 0 }, deathSaves: { success: 0, fail: 0 }, hitDiceUsed: {}, slotsUsed: [], pactUsed: 0,
-    resourcesUsed: {}, conditions: [], exhaustion: 0, concentration: null, overrides: {}, notes: '',
+    resourcesUsed: {}, conditions: [], exhaustion: 0, concentration: null, weapons: [], spells: [], overrides: {}, notes: '',
   };
 }
 

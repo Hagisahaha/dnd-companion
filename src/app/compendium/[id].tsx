@@ -14,7 +14,7 @@ export default function EntryScreen() {
   if (!e) {
     return (
       <View style={s.root}>
-        <Text style={s.missing}>This entry isn't in the compendium.</Text>
+        <Text style={s.missing}>This entry isn&apos;t in the compendium.</Text>
       </View>
     );
   }
