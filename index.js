@@ -1,36 +1,19 @@
 /**
- * Entry point. Installs a crash catcher before anything else loads, so a startup
- * failure on a device shows its stack instead of a generic "problem running" screen.
+ * Entry point. When a module throws while loading, Metro reports it to the global error
+ * handler and keeps going with `undefined`, so the visible crash is usually a confusing
+ * follow-up error. This handler forwards the FIRST fatal error with its stack in the
+ * message, so the real cause shows on the device's error screen.
  */
-import { AppRegistry } from 'react-native';
-
-function showCrash(error) {
-  const { CrashScreen } = require('./src/components/CrashScreen');
-  const React = require('react');
-  function Crashed() {
-    return React.createElement(CrashScreen, { error });
-  }
-  AppRegistry.registerComponent('main', () => Crashed);
-}
-
 const previous = global.ErrorUtils?.getGlobalHandler?.();
+let reported = false;
 global.ErrorUtils?.setGlobalHandler?.((error, isFatal) => {
-  if (isFatal) {
-    console.error(error);
-    showCrash(error);
-    try {
-      // If the app had already started, restart it on the crash screen.
-      AppRegistry.runApplication('main', { rootTag: global.__lastRootTag ?? 1, initialProps: {} });
-    } catch {
-      previous?.(error, isFatal);
-    }
-  } else {
-    previous?.(error, isFatal);
+  if (isFatal && !reported && error instanceof Error) {
+    reported = true;
+    const detailed = new Error(`${error.name}: ${error.message}\n\n${String(error.stack ?? '').slice(0, 1500)}`);
+    previous?.(detailed, isFatal);
+    return;
   }
+  previous?.(error, isFatal);
 });
 
-try {
-  require('expo-router/entry');
-} catch (error) {
-  showCrash(error);
-}
+require('expo-router/entry');
