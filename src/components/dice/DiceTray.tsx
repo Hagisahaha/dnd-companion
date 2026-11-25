@@ -8,6 +8,7 @@ import { DIE_SIDES, DieSides, DiceFormula, formatFormula, formulaFromHand } from
 import { toPhysical } from '../../dice/physical';
 import { RollMode, RollResult, createSecureRng, rerollDie, roll } from '../../dice/roll';
 import { simulateThrow } from '../../dice/simulate';
+import { useRollMode } from '../../state/roll';
 import { Palette, usePalette } from '../../theme/colors';
 import { CAMERA_FOV, CAMERA_HEIGHT, DiceScene, SceneDie, createController } from './DiceScene';
 import { DieGlyph } from './DieGlyph';
@@ -32,7 +33,8 @@ export function DiceTray() {
 
   const [hand, setHand] = useState<DieSides[]>([]);
   const [modifier, setModifier] = useState(0);
-  const [mode, setMode] = useState<RollMode>('normal');
+  const mode = useRollMode((st) => st.mode);
+  const setMode = useRollMode((st) => st.set);
   const [last, setLast] = useState<DiceFormula>(DEFAULT_FORMULA);
   const [result, setResult] = useState<RollResult | null>(null);
   const [settled, setSettled] = useState(true);
@@ -109,7 +111,7 @@ export function DiceTray() {
         wx *= MAX / speed;
         wz *= MAX / speed;
       }
-      const r = roll(formula, mode, rng);
+      const r = roll(formula, useRollMode.getState().consume(), rng);
       const physical = toPhysical(r.dice);
       const track = simulateThrow({
         dice: physical.map((d, i) => ({

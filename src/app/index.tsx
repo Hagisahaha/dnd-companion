@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { Pressable, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { CharacterBar } from '../components/CharacterBar';
 import { DiceTray } from '../components/dice/DiceTray';
 import { usePalette } from '../theme/colors';
 
@@ -20,6 +21,7 @@ export default function Home() {
         <Text style={{ fontSize: 18, color: c.secondaryLabel, marginRight: 6, marginTop: -2 }}>⌕</Text>
         <Text style={{ fontSize: 17, color: c.secondaryLabel }}>Search spells, items, rules</Text>
       </Pressable>
+      <CharacterBar />
       <DiceTray />
     </SafeAreaView>
   );

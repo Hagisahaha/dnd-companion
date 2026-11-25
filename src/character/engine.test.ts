@@ -39,6 +39,8 @@ describe('derive: core numbers', () => {
     expect(s('arcana')).toBe(7);
     expect(s('investigation')).toBe(10);
     expect(s('athletics')).toBe(-1);
+    // Sage gives Arcana + History automatically.
+    expect(d.skills.find((x) => x.key === 'history')).toMatchObject({ prof: 1, fromBackground: true });
     expect(d.passivePerception.value).toBe(11);
   });
 
@@ -160,7 +162,7 @@ describe('hit points and rests', () => {
   });
 
   it('short rest restores per-feature, long rest restores everything', () => {
-    let c = { ...fighter(), resourcesUsed: { secondwind: 2, actionsurge: 1 }, slotsUsed: [1], exhaustion: 2, hp: { current: 5, temp: 2 } };
+    let c: Character = { ...fighter(), resourcesUsed: { secondwind: 2, actionsurge: 1 }, slotsUsed: [1], exhaustion: 2, hp: { current: 5, temp: 2 } };
     c = shortRest(c);
     expect(c.resourcesUsed).toEqual({ secondwind: 1, actionsurge: 0 });
     c = longRest(c);

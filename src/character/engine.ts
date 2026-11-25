@@ -41,7 +41,7 @@ export interface Derived {
   scores: Record<Ability, Stat>;
   mods: Record<Ability, number>;
   saves: Record<Ability, Stat & { proficient: boolean }>;
-  skills: { name: string; key: string; ability: Ability; prof: number; stat: Stat }[];
+  skills: { name: string; key: string; ability: Ability; prof: number; fromBackground: boolean; stat: Stat }[];
   initiative: Stat;
   ac: Stat;
   speed: Stat;
@@ -92,14 +92,16 @@ export function derive(c: Character): Derived {
 
   // ---- skills ----
   const jack = levelOf('Bard') >= 2;
+  const bgSkills = new Set(getBackground(c.backgroundId)?.skills ?? []);
   const skills = SKILLS.map((s) => {
     const key = s.name.toLowerCase();
-    const prof = c.skills[key] ?? 0;
+    // Background skills are always proficient; the player can still raise them to expertise.
+    const prof = Math.max(c.skills[key] ?? 0, bgSkills.has(key) ? 1 : 0);
     const parts: Part[] = [{ label: `${ABILITY_SHORT[s.ability]} modifier`, value: mods[s.ability] }];
     if (prof === 2) parts.push({ label: 'Expertise', value: pb * 2 });
     else if (prof === 1) parts.push({ label: 'Proficiency', value: pb });
     else if (jack) parts.push({ label: 'Jack of All Trades', value: Math.floor(pb / 2) });
-    return { name: s.name, key, ability: s.ability, prof, stat: stat(parts, c, `skill:${key}`) };
+    return { name: s.name, key, ability: s.ability, prof, fromBackground: bgSkills.has(key), stat: stat(parts, c, `skill:${key}`) };
   });
 
   const initParts: Part[] = [{ label: 'DEX modifier', value: mods.dex }];
@@ -348,7 +350,7 @@ export function newCharacter(id: string): Character {
   return {
     id, name: '', createdAt: now, updatedAt: now,
     speciesId: null, backgroundId: null, classes: [{ name: 'Fighter', level: 1, subclass: null }],
-    baseScores: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }, scoreMethod: 'standard',
+    baseScores: { str: 15, con: 14, dex: 13, wis: 12, cha: 10, int: 8 }, scoreMethod: 'standard',
     backgroundBonus: {}, otherBonus: {}, skills: {}, extraSaves: [],
     armorId: null, shield: false, acBonus: 0, hpPerLevelBonus: 0,
     hp: { current: 0, temp: 0 }, deathSaves: { success: 0, fail: 0 }, hitDiceUsed: {}, slotsUsed: [], pactUsed: 0,

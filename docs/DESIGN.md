@@ -81,13 +81,21 @@ Nguyên tắc: **ít thao tác nhất, mượt nhất, không thiếu và không
 - **Cử chỉ và animation**: `react-native-gesture-handler`, `react-native-reanimated`.
 - **Bottom sheet**: `@gorhom/bottom-sheet` (khi làm sheet).
 - **Haptics / âm thanh**: `expo-haptics`, `expo-audio`.
-- **State + local-first sync**: `@legendapp/state` (persist qua MMKV, sync qua plugin Supabase).
+- **State**: `zustand`, lưu bằng AsyncStorage (`src/character/store.ts`), nên app đọc và ghi offline ngay lập tức. Supabase sync sẽ nằm phía sau store này (cần URL và key của project Supabase).
 - **Dữ liệu tra cứu**: 5etools JSON (`npm run data:fetch` rồi `npm run data:build`) được tiền xử lý thành `src/data/compendium/` gồm index tìm kiếm và một file cho mỗi loại; app chỉ tải khi mở tra cứu, nên không làm chậm khởi động. Homebrew sẽ nạp chồng lên.
   - Quy tắc nội dung: mục nào có bản in mới hơn (`reprintedAs`) thì bỏ bản cũ; loại UA, reskin WoW, screen, sách nấu ăn và đan len.
   - Trong text, xúc xắc (`8d6`, `+5`) bấm vào là roll ngay; link mở mục tương ứng.
-- **Rules engine**: thuần TypeScript, có unit test. Mọi số được tính ra kèm "nguồn" (ví dụ AC 16 = 10 + DEX 2 + Shield 2 + …) để không bao giờ sai mà không biết vì sao.
+- **Rules engine** (`src/character/engine.ts`): thuần TypeScript, có unit test. Mọi số được tính ra kèm "nguồn" (ví dụ AC 16 = 10 + DEX 2 + Shield 2 + …); nhấn giữ một con số trên sheet để xem. Số nào cũng override tay được.
+  - Đã có: ability, save, skill (proficient/expertise, Jack of All Trades), AC (giáp, Unarmored Defense của Barbarian/Monk/Draconic), speed, HP, hit dice, spell DC/attack, slot (đơn class, multiclass, third caster, pact), resource có giới hạn số lần dùng cùng cách hồi khi nghỉ, damage/heal/temp HP, concentration DC, death save, short/long rest, exhaustion (−2 cho mọi d20 test).
+  - Chưa có: feat và hiệu ứng magic item tự động (hiện nhập tay qua mục Bonuses), danh sách spell đã prepare, vũ khí và attack.
 
-## 6. Còn chờ
+## 6. Hành vi đã chốt khi làm
+
+- ADV/DIS dùng chung giữa khay và sheet, và **tự về Normal sau mỗi roll**: trong game advantage tính theo từng roll, nên để nút dính sẽ làm sai các roll sau mà người chơi không để ý.
+- Khi tạo nhân vật, standard array và +2/+1 của background tự xếp theo ability chính của class; người chơi vẫn đổi được.
+- Nat 20 trên attack: nút roll damage tự gấp đôi số xúc xắc (luật 2024).
+
+## 7. Còn chờ
 
 - File homebrew của người dùng (PDF/Docs + 5etools JSON).
 - Danh sách house rules cụ thể.

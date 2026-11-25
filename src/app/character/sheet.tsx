@@ -1,0 +1,314 @@
+import { router, Stack } from 'expo-router';
+import { useMemo, useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { derive, fmtMod, longRest, shortRest } from '../../character/engine';
+import { getBackground, getSpecies } from '../../character/rules';
+import { useActiveCharacter, useCharacters } from '../../character/store';
+import { ABILITIES, ABILITY_NAME, ABILITY_SHORT, Stat } from '../../character/types';
+import { openEntry } from '../../components/compendium/Entries';
+import { useQuickRoll } from '../../components/QuickRoll';
+import { Button, Row, Section, Segmented, useStyles } from '../../components/ui';
+import { useRollMode } from '../../state/roll';
+import { Palette } from '../../theme/colors';
+
+type Tab = 'core' | 'spells' | 'features';
+
+const CONDITIONS = ['Blinded', 'Charmed', 'Deafened', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified', 'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious'];
+
+export default function Sheet() {
+  const c = useActiveCharacter();
+  const update = useCharacters((s) => s.update);
+  const quickRoll = useQuickRoll();
+  const mode = useRollMode((s) => s.mode);
+  const setMode = useRollMode((s) => s.set);
+  const [tab, setTab] = useState<Tab>('core');
+  const [explain, setExplain] = useState<{ title: string; stat: Stat } | null>(null);
+  const [st, pal] = useStyles(styles);
+  const d = useMemo(() => (c ? derive(c) : null), [c]);
+
+  if (!c || !d) {
+    return (
+      <View style={st.root}>
+        <Stack.Screen options={{ title: 'Character' }} />
+        <Text style={st.empty}>No character yet.</Text>
+      </View>
+    );
+  }
+
+  // 2024 Exhaustion: −2 per level to every d20 test.
+  const check = (label: string, bonus: number) => {
+    const b = bonus - 2 * c.exhaustion;
+    quickRoll(`1d20${b >= 0 ? '+' : ''}${b}`, { label: c.exhaustion ? `${label} (exhaustion −${2 * c.exhaustion})` : label, mode: 'shared' });
+  };
+  const patch = (fn: Parameters<typeof update>[1]) => update(c.id, fn);
+  const species = getSpecies(c.speciesId);
+  const bg = getBackground(c.backgroundId);
+
+  return (
+    <View style={st.root}>
+      <Stack.Screen
+        options={{
+          title: c.name,
+          headerRight: () => (
+            <Pressable onPress={() => router.push({ pathname: '/character/edit', params: { id: c.id } })} hitSlop={8}>
+              <Text style={st.headerBtn}>Edit</Text>
+            </Pressable>
+          ),
+        }}
+      />
+      <ScrollView contentContainerStyle={st.content} stickyHeaderIndices={[1]}>
+        <View style={st.hero}>
+          <Text style={st.sub}>
+            Level {d.level} {d.summary.replace(/ \d+/g, (m) => (c.classes.length > 1 ? m : ''))}
+            {c.classes[0]?.subclass ? ` (${c.classes[0].subclass})` : ''}
+          </Text>
+          <Text style={st.sub2}>{[species?.name, bg?.name].filter(Boolean).join(' · ')}</Text>
+          <View style={st.stats}>
+            <StatBox label="AC" value={String(d.ac.value)} onPress={() => setExplain({ title: 'Armor Class', stat: d.ac })} st={st} />
+            <StatBox label="Initiative" value={fmtMod(d.initiative.value)} onPress={() => check('Initiative', d.initiative.value)} onLongPress={() => setExplain({ title: 'Initiative', stat: d.initiative })} st={st} accent />
+            <StatBox label="Speed" value={`${d.speed.value}`} onPress={() => setExplain({ title: 'Speed', stat: d.speed })} st={st} />
+            <StatBox label="Prof." value={fmtMod(d.pb)} st={st} />
+          </View>
+          <Pressable onPress={() => router.push('/character/hp')} style={({ pressed }) => [st.hpCard, pressed && { opacity: 0.7 }]} accessibilityLabel="Change hit points">
+            <View style={{ flex: 1 }}>
+              <Text style={st.hpLabel}>Hit Points</Text>
+              <Text style={st.hpValue}>
+                {c.hp.current}
+                <Text style={st.hpMax}> / {d.maxHp.value}</Text>
+                {c.hp.temp ? <Text style={st.hpTemp}>  +{c.hp.temp} temp</Text> : null}
+              </Text>
+            </View>
+            <View style={st.hpBarTrack}>
+              <View style={[st.hpBar, { width: `${Math.min(100, (c.hp.current / Math.max(1, d.maxHp.value)) * 100)}%`, backgroundColor: c.hp.current / d.maxHp.value <= 0.25 ? pal.red : pal.green }]} />
+            </View>
+          </Pressable>
+          {c.concentration ? (
+            <Pressable onPress={() => patch((x) => ({ ...x, concentration: null }))} style={st.banner}>
+              <Text style={st.bannerText}>Concentrating on {c.concentration} · tap to end</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
+        <View style={st.sticky}>
+          <Segmented options={[{ value: 'advantage', label: 'ADV' }, { value: 'normal', label: 'Normal' }, { value: 'disadvantage', label: 'DIS' }]} value={mode} onChange={setMode} />
+          <Segmented style={{ marginTop: 8 }} options={[{ value: 'core', label: 'Core' }, { value: 'spells', label: 'Spells' }, { value: 'features', label: 'Features' }]} value={tab} onChange={setTab} />
+        </View>
+
+        {tab === 'core' && (
+          <>
+            <View style={st.abilities}>
+              {ABILITIES.map((a) => (
+                <Pressable key={a} onPress={() => check(`${ABILITY_NAME[a]} check`, d.mods[a])} onLongPress={() => setExplain({ title: ABILITY_NAME[a], stat: d.scores[a] })} style={({ pressed }) => [st.ability, pressed && { opacity: 0.6 }]} accessibilityLabel={`${ABILITY_NAME[a]} check`}>
+                  <Text style={st.abilityName}>{ABILITY_SHORT[a]}</Text>
+                  <Text style={st.abilityMod}>{fmtMod(d.mods[a])}</Text>
+                  <Text style={st.abilityScore}>{d.scores[a].value}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={st.hint}>Tap to roll · hold to see how it's calculated</Text>
+
+            <Section title="Saving Throws">
+              {ABILITIES.map((a, i) => (
+                <Row key={a} first={i === 0} label={ABILITY_NAME[a]} value={fmtMod(d.saves[a].value)} valueStyle={d.saves[a].proficient ? st.profValue : undefined}
+                  detail={d.saves[a].proficient ? 'Proficient' : undefined}
+                  onPress={() => check(`${ABILITY_NAME[a]} save`, d.saves[a].value)} onLongPress={() => setExplain({ title: `${ABILITY_NAME[a]} Save`, stat: d.saves[a] })} right={<View />} />
+              ))}
+            </Section>
+
+            <Section title="Skills" footer={`Passive Perception ${d.passivePerception.value}`}>
+              {d.skills.map((sk, i) => (
+                <Row key={sk.key} first={i === 0} label={sk.name} detail={`${ABILITY_SHORT[sk.ability]}${sk.prof === 2 ? ' · Expertise' : sk.prof === 1 ? ' · Proficient' : ''}`}
+                  value={fmtMod(sk.stat.value)} valueStyle={sk.prof ? st.profValue : undefined}
+                  onPress={() => check(sk.name, sk.stat.value)} onLongPress={() => setExplain({ title: sk.name, stat: sk.stat })} right={<View />} />
+              ))}
+            </Section>
+
+            {d.resources.length > 0 && (
+              <Section title="Limited Uses" footer="Tap a pip to spend or restore a use.">
+                {d.resources.map((r, i) => (
+                  <View key={r.key} style={[st.resRow, i > 0 && st.divider]}>
+                    <Pressable style={{ flex: 1 }} onPress={() => r.featureId && openEntry(r.featureId)}>
+                      <Text style={st.resName}>{r.name}</Text>
+                      <Text style={st.resSub}>{r.max - r.used} of {r.max} left · {r.shortRest === 'none' ? 'Long rest' : r.shortRest === 'all' ? 'Short or long rest' : `Short rest +${r.shortRest}`}</Text>
+                    </Pressable>
+                    {r.max <= 10 ? (
+                      <Pips max={r.max} used={r.used} onChange={(used) => patch((x) => ({ ...x, resourcesUsed: { ...x.resourcesUsed, [r.key]: used } }))} st={st} />
+                    ) : (
+                      <View style={st.counter}>
+                        <Pressable onPress={() => patch((x) => ({ ...x, resourcesUsed: { ...x.resourcesUsed, [r.key]: Math.min(r.max, r.used + 1) } }))} style={st.counterBtn}><Text style={st.counterGlyph}>−</Text></Pressable>
+                        <Text style={st.counterVal}>{r.max - r.used}</Text>
+                        <Pressable onPress={() => patch((x) => ({ ...x, resourcesUsed: { ...x.resourcesUsed, [r.key]: Math.max(0, r.used - 1) } }))} style={st.counterBtn}><Text style={st.counterGlyph}>+</Text></Pressable>
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </Section>
+            )}
+
+            <Section title="Conditions" footer={c.exhaustion ? `Exhaustion ${c.exhaustion}: −${c.exhaustion * 2} to d20 tests, −${c.exhaustion * 5} ft. speed` : undefined}>
+              <View style={[st.chips, { padding: 12 }]}>
+                {CONDITIONS.map((name) => {
+                  const on = c.conditions.includes(name);
+                  return (
+                    <Pressable key={name} onPress={() => patch((x) => ({ ...x, conditions: on ? x.conditions.filter((y) => y !== name) : [...x.conditions, name] }))} onLongPress={() => openEntry(`condition:${name.toLowerCase()}|xphb`)} style={[st.chip, on && st.chipOn]}>
+                      <Text style={[st.chipText, on && st.chipTextOn]}>{name}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Row label="Exhaustion" right={<Pips max={6} used={c.exhaustion} onChange={(exhaustion) => patch((x) => ({ ...x, exhaustion }))} st={st} danger />} />
+            </Section>
+
+            <View style={st.rest}>
+              <Button kind="tinted" title="Short Rest" style={{ flex: 1 }} onPress={() => patch(shortRest)} />
+              <Button kind="tinted" title="Long Rest" style={{ flex: 1 }} onPress={() => patch(longRest)} />
+            </View>
+          </>
+        )}
+
+        {tab === 'spells' && (
+          <>
+            {d.spellcasting.length === 0 && !d.pact && <Text style={st.empty}>No spellcasting.</Text>}
+            {d.spellcasting.map((sc, i) => (
+              <Section key={sc.className} title={`${sc.className} Spellcasting`} style={i === 0 ? { marginTop: 12 } : undefined}>
+                <Row first label="Spell Save DC" value={String(sc.dc.value)} onLongPress={() => setExplain({ title: 'Spell Save DC', stat: sc.dc })} onPress={() => setExplain({ title: 'Spell Save DC', stat: sc.dc })} right={<View />} />
+                <Row label="Spell Attack" value={fmtMod(sc.attack.value)} valueStyle={st.profValue} onPress={() => check('Spell attack', sc.attack.value)} onLongPress={() => setExplain({ title: 'Spell Attack', stat: sc.attack })} right={<View />} />
+                <Row label="Cantrips" value={String(sc.cantrips)} />
+                <Row label="Prepared Spells" value={String(sc.prepared)} />
+              </Section>
+            ))}
+            {d.slots.length > 0 && (
+              <Section title="Spell Slots" footer="Tap a pip to spend or restore a slot. Long rest restores all.">
+                {d.slots.map((sl, i) => (
+                  <View key={sl.level} style={[st.resRow, i > 0 && st.divider]}>
+                    <Text style={[st.resName, { flex: 1 }]}>Level {sl.level}</Text>
+                    <Pips max={sl.max} used={sl.used} onChange={(used) => patch((x) => { const s = [...x.slotsUsed]; s[sl.level - 1] = used; return { ...x, slotsUsed: s }; })} st={st} />
+                  </View>
+                ))}
+              </Section>
+            )}
+            {d.pact && (
+              <Section title="Pact Magic" footer="Pact slots come back on a short or long rest.">
+                <View style={st.resRow}>
+                  <Text style={[st.resName, { flex: 1 }]}>Level {d.pact.level} slots</Text>
+                  <Pips max={d.pact.max} used={d.pact.used} onChange={(pactUsed) => patch((x) => ({ ...x, pactUsed }))} st={st} />
+                </View>
+              </Section>
+            )}
+          </>
+        )}
+
+        {tab === 'features' && (
+          <Section title="Features" style={{ marginTop: 12 }}>
+            {d.features.map((f, i) => (
+              <Row key={`${f.source}-${f.name}-${f.level}`} first={i === 0} label={f.name} detail={`${f.source} · Level ${f.level}`} onPress={f.id ? () => openEntry(f.id!) : undefined} />
+            ))}
+          </Section>
+        )}
+      </ScrollView>
+
+      <Modal visible={!!explain} transparent animationType="fade" onRequestClose={() => setExplain(null)}>
+        <Pressable style={st.scrim} onPress={() => setExplain(null)}>
+          {explain && (
+            <View style={st.explain}>
+              <Text style={st.explainTitle}>{explain.title}</Text>
+              {explain.stat.parts.map((p, i) => (
+                <View key={i} style={st.explainRow}>
+                  <Text style={st.explainLabel}>{p.label}</Text>
+                  <Text style={st.explainVal}>{/modifier|Proficiency|Expertise|Jack|Override|bonus/i.test(p.label) ? fmtMod(p.value) : p.value}</Text>
+                </View>
+              ))}
+              <View style={[st.explainRow, st.divider, { paddingTop: 10 }]}>
+                <Text style={[st.explainLabel, { fontWeight: '700', color: pal.label }]}>Total</Text>
+                <Text style={[st.explainVal, { fontWeight: '700' }]}>{explain.stat.value}</Text>
+              </View>
+            </View>
+          )}
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
+function StatBox({ label, value, onPress, onLongPress, st, accent }: { label: string; value: string; onPress?: () => void; onLongPress?: () => void; st: ReturnType<typeof styles>; accent?: boolean }) {
+  return (
+    <Pressable onPress={onPress} onLongPress={onLongPress} disabled={!onPress} style={({ pressed }) => [st.statBox, pressed && { opacity: 0.6 }]} accessibilityLabel={`${label} ${value}`}>
+      <Text style={[st.statValue, accent && st.profValue]}>{value}</Text>
+      <Text style={st.statLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/** Row of pips: filled = available. Tapping pip i makes exactly i+1 available (tap the last filled one to spend it). */
+function Pips({ max, used, onChange, st, danger }: { max: number; used: number; onChange: (used: number) => void; st: ReturnType<typeof styles>; danger?: boolean }) {
+  const available = danger ? used : max - used;
+  return (
+    <View style={st.pips}>
+      {Array.from({ length: max }, (_, i) => {
+        const filled = i < available;
+        return (
+          <Pressable key={i} hitSlop={4} onPress={() => {
+            const nextAvail = filled && i === available - 1 ? i : i + 1;
+            onChange(danger ? nextAvail : max - nextAvail);
+          }} style={[st.pip, filled && (danger ? st.pipDanger : st.pipOn)]} accessibilityLabel={`${i + 1} of ${max}`} />
+        );
+      })}
+    </View>
+  );
+}
+
+const styles = (c: Palette) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.background },
+    content: { paddingBottom: 80 },
+    headerBtn: { fontSize: 17, color: c.accent, paddingHorizontal: 8 },
+    empty: { color: c.secondaryLabel, textAlign: 'center', marginTop: 40, fontSize: 15 },
+    hero: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
+    sub: { fontSize: 17, color: c.label, fontWeight: '600' },
+    sub2: { fontSize: 15, color: c.secondaryLabel, marginTop: 2 },
+    stats: { flexDirection: 'row', gap: 8, marginTop: 14 },
+    statBox: { flex: 1, backgroundColor: c.surface, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
+    statValue: { fontSize: 22, fontWeight: '700', color: c.label, fontVariant: ['tabular-nums'] },
+    statLabel: { fontSize: 12, color: c.secondaryLabel, marginTop: 2 },
+    hpCard: { marginTop: 8, backgroundColor: c.surface, borderRadius: 12, padding: 14, gap: 10 },
+    hpLabel: { fontSize: 13, color: c.secondaryLabel },
+    hpValue: { fontSize: 28, fontWeight: '700', color: c.label, fontVariant: ['tabular-nums'] },
+    hpMax: { fontSize: 20, fontWeight: '500', color: c.secondaryLabel },
+    hpTemp: { fontSize: 15, fontWeight: '600', color: c.accent },
+    hpBarTrack: { height: 6, borderRadius: 3, backgroundColor: c.fill, overflow: 'hidden' },
+    hpBar: { height: 6, borderRadius: 3 },
+    banner: { marginTop: 8, backgroundColor: c.fill, borderRadius: 10, padding: 10 },
+    bannerText: { color: c.label, fontSize: 14, textAlign: 'center' },
+    sticky: { backgroundColor: c.background, paddingHorizontal: 16, paddingVertical: 8 },
+    abilities: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, marginTop: 8 },
+    ability: { width: '31.5%', flexGrow: 1, backgroundColor: c.surface, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
+    abilityName: { fontSize: 12, fontWeight: '600', color: c.secondaryLabel, letterSpacing: 0.5 },
+    abilityMod: { fontSize: 26, fontWeight: '700', color: c.accent, fontVariant: ['tabular-nums'] },
+    abilityScore: { fontSize: 13, color: c.secondaryLabel, fontVariant: ['tabular-nums'] },
+    hint: { fontSize: 12, color: c.tertiaryLabel, textAlign: 'center', marginTop: 6, marginBottom: 16 },
+    profValue: { color: c.accent, fontWeight: '600' },
+    resRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, gap: 12 },
+    divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.separator },
+    resName: { fontSize: 17, color: c.label },
+    resSub: { fontSize: 13, color: c.secondaryLabel, marginTop: 2 },
+    pips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, maxWidth: 180, justifyContent: 'flex-end' },
+    pip: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: c.fillStrong },
+    pipOn: { backgroundColor: c.accent, borderColor: c.accent },
+    pipDanger: { backgroundColor: c.red, borderColor: c.red },
+    counter: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.fill, borderRadius: 9 },
+    counterBtn: { width: 38, height: 32, alignItems: 'center', justifyContent: 'center' },
+    counterGlyph: { fontSize: 20, color: c.label },
+    counterVal: { minWidth: 36, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.label, fontVariant: ['tabular-nums'] },
+    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    chip: { paddingHorizontal: 12, height: 30, borderRadius: 15, backgroundColor: c.fill, justifyContent: 'center' },
+    chipOn: { backgroundColor: c.red },
+    chipText: { fontSize: 14, color: c.label, fontWeight: '500' },
+    chipTextOn: { color: '#fff' },
+    rest: { flexDirection: 'row', gap: 12, marginHorizontal: 16 },
+    scrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 32 },
+    explain: { backgroundColor: c.surface, borderRadius: 16, padding: 18 },
+    explainTitle: { fontSize: 17, fontWeight: '700', color: c.label, marginBottom: 10 },
+    explainRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
+    explainLabel: { fontSize: 15, color: c.secondaryLabel },
+    explainVal: { fontSize: 15, color: c.label, fontVariant: ['tabular-nums'] },
+  });

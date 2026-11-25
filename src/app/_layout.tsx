@@ -13,6 +13,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.background } }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="compendium" options={{ animation: 'fade_from_bottom' }} />
+          <Stack.Screen name="character" />
         </Stack>
       </QuickRollProvider>
     </GestureHandlerRootView>
