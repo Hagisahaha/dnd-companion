@@ -16,11 +16,10 @@ import { useCharacters } from '../../character/store';
 import { DIE_SIDES, DieSides, DiceFormula, formatFormula, formulaFromHand, parseFormula } from '../../dice/notation';
 import { toPhysical } from '../../dice/physical';
 import { RollMode, RollResult, createSecureRng, rerollDie, roll } from '../../dice/roll';
-import { simulateThrow } from '../../dice/simulate';
 import { Preset, useRollLog } from '../../state/history';
 import { useRollMode } from '../../state/roll';
 import { Palette, usePalette } from '../../theme/colors';
-import { CAMERA_FOV, CAMERA_HEIGHT, DiceScene, SceneDie, createController } from './DiceScene';
+import { CAMERA_FOV, CAMERA_HEIGHT, DiceScene, SceneDie, createController, startThrow } from './DiceScene';
 import { DieGlyph } from './DieGlyph';
 import { PresetEditor } from './PresetEditor';
 
@@ -163,30 +162,33 @@ export function DiceTray() {
       }
       const r = roll(thrown, useRollMode.getState().consume(), rng);
       const physical = toPhysical(r.dice);
-      const track = simulateThrow({
-        dice: physical.map((d, i) => ({
-          kind: d.kind,
-          value: d.value,
-          start: [
-            Math.max(-bx + 1, Math.min(bx - 1, ctrl.poses[i].p[0])),
-            ctrl.poses[i].p[1],
-            Math.max(-bz + 1, Math.min(bz - 1, ctrl.poses[i].p[2])),
-          ],
-          rotation: ctrl.poses[i].q,
-        })),
-        velocity: [wx, wz],
-        bounds: [bx, bz],
+      startThrow(
+        ctrl,
+        {
+          dice: physical.map((d, i) => ({
+            kind: d.kind,
+            value: d.value,
+            start: [
+              Math.max(-bx + 1, Math.min(bx - 1, ctrl.poses[i].p[0])),
+              ctrl.poses[i].p[1],
+              Math.max(-bz + 1, Math.min(bz - 1, ctrl.poses[i].p[2])),
+            ],
+            rotation: ctrl.poses[i].q,
+          })),
+          velocity: [wx, wz],
+          bounds: [bx, bz],
+        },
+        physical.map((_, i) => i),
+      );
+      // React updates and the history write wait a frame, so nothing competes with the dice leaving the hand.
+      const label = used.length && used.length === hand.length ? presetLabel : null;
+      requestAnimationFrame(() => {
+        if (used.length) setLast(formulaFromHand(used, 0));
+        setHand([]);
+        setResult(r);
+        setPresetLabel(null);
+        setTimeout(() => useRollLog.getState().record(r, label, activeName()), 250);
       });
-      ctrl.track = track;
-      ctrl.trackMap = physical.map((_, i) => i);
-      ctrl.trackStart = performance.now();
-      ctrl.impactCursor = 0;
-      ctrl.phase = 'playing';
-      if (used.length) setLast(formulaFromHand(used, 0));
-      setHand([]);
-      setResult(r);
-      useRollLog.getState().record(r, used.length && used.length === hand.length ? presetLabel : null, activeName());
-      setPresetLabel(null);
     },
     [bounds, ctrl, hand, presetLabel],
   );
@@ -279,16 +281,15 @@ export function DiceTray() {
     const after = toPhysical(next.dice);
     const moving = after.map((d, i) => (d.dieId === dieId ? i : -1)).filter((i) => i >= 0);
     const [bx, bz] = bounds();
-    const track = simulateThrow({
-      dice: moving.map((i) => ({ kind: after[i].kind, value: after[i].value, start: [ctrl.poses[i].p[0], 2.5, ctrl.poses[i].p[2]] })),
-      velocity: [(Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10],
-      bounds: [bx, bz],
-    });
-    ctrl.track = track;
-    ctrl.trackMap = before.map((_, i) => moving.indexOf(i));
-    ctrl.trackStart = performance.now();
-    ctrl.impactCursor = 0;
-    ctrl.phase = 'playing';
+    startThrow(
+      ctrl,
+      {
+        dice: moving.map((i) => ({ kind: after[i].kind, value: after[i].value, start: [ctrl.poses[i].p[0], 2.5, ctrl.poses[i].p[2]] })),
+        velocity: [(Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10],
+        bounds: [bx, bz],
+      },
+      before.map((_, i) => moving.indexOf(i)),
+    );
     setSettled(false);
     setResult(next);
     useRollLog.getState().replace(next);

@@ -16,11 +16,10 @@ import { useCharacters } from '../character/store';
 import { formatFormula, parseFormula } from '../dice/notation';
 import { toPhysical } from '../dice/physical';
 import { RollMode, RollResult, createSecureRng, roll } from '../dice/roll';
-import { simulateThrow } from '../dice/simulate';
 import { useRollLog } from '../state/history';
 import { useRollMode } from '../state/roll';
 import { Palette, usePalette } from '../theme/colors';
-import { CAMERA_FOV, CAMERA_HEIGHT, DiceScene, SceneDie, createController } from './dice/DiceScene';
+import { CAMERA_FOV, CAMERA_HEIGHT, DiceScene, SceneDie, createController, startThrow } from './dice/DiceScene';
 
 const rng = createSecureRng((a) => Crypto.getRandomValues(a));
 
@@ -61,11 +60,13 @@ export function QuickRollProvider({ children }: { children: ReactNode }) {
       const mode = opts.mode === 'shared' ? useRollMode.getState().consume() : opts.mode ?? 'normal';
       const r = roll(f, mode, rng);
       const who = useCharacters.getState();
-      useRollLog.getState().record(r, opts.label ?? null, who.activeId ? who.characters[who.activeId]?.name ?? null : null);
+      // Logged after the dice are in flight; the write isn't needed to draw anything.
+      setTimeout(() => useRollLog.getState().record(r, opts.label ?? null, who.activeId ? who.characters[who.activeId]?.name ?? null : null), 300);
       const physical = toPhysical(r.dice);
       const [bx, bz] = bounds();
       // Thrown from just below the screen's bottom edge, toward the upper middle.
-      const track = simulateThrow({
+      ctrl.poses = physical.map(() => ({ p: [0, -10, 0], q: [0, 0, 0, 1] }));
+      startThrow(ctrl, {
         dice: physical.map((d, i) => ({
           kind: d.kind,
           value: d.value,
@@ -73,13 +74,7 @@ export function QuickRollProvider({ children }: { children: ReactNode }) {
         })),
         velocity: [(Math.random() - 0.5) * 8, -26 - Math.random() * 8],
         bounds: [bx, bz],
-      });
-      ctrl.poses = physical.map(() => ({ p: [0, -10, 0], q: [0, 0, 0, 1] }));
-      ctrl.track = track;
-      ctrl.trackMap = physical.map((_, i) => i);
-      ctrl.trackStart = performance.now();
-      ctrl.impactCursor = 0;
-      ctrl.phase = 'playing';
+      }, physical.map((_, i) => i));
       const key = ++seq;
       ctrl.onSettled = () => {
         setShown((cur) => (cur && cur.key === key ? { ...cur, settled: true } : cur));
