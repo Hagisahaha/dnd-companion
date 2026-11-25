@@ -9,21 +9,31 @@ import { Canvas } from '@react-three/fiber';
 import * as Crypto from 'expo-crypto';
 import * as Haptics from 'expo-haptics';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { LayoutChangeEvent, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
-import { DIE_SIDES, DieSides, DiceFormula, formatFormula, formulaFromHand } from '../../dice/notation';
+import { useCharacters } from '../../character/store';
+import { DIE_SIDES, DieSides, DiceFormula, formatFormula, formulaFromHand, parseFormula } from '../../dice/notation';
 import { toPhysical } from '../../dice/physical';
 import { RollMode, RollResult, createSecureRng, rerollDie, roll } from '../../dice/roll';
 import { simulateThrow } from '../../dice/simulate';
+import { Preset, useRollLog } from '../../state/history';
 import { useRollMode } from '../../state/roll';
 import { Palette, usePalette } from '../../theme/colors';
 import { CAMERA_FOV, CAMERA_HEIGHT, DiceScene, SceneDie, createController } from './DiceScene';
 import { DieGlyph } from './DieGlyph';
+import { PresetEditor } from './PresetEditor';
 
 const rng = createSecureRng((a) => Crypto.getRandomValues(a));
 const DEFAULT_FORMULA: DiceFormula = { terms: [{ count: 1, sides: 20, sign: 1 }], modifier: 0 };
 const HOLD_DELAY_MS = 160;
 const MOVE_SLOP = 8;
+const MAX_HAND = 30;
+
+const activeName = () => {
+  const st = useCharacters.getState();
+  return st.activeId ? st.characters[st.activeId]?.name ?? null : null;
+};
 
 function haptic(style: Haptics.ImpactFeedbackStyle) {
   if (Platform.OS === 'web') return;
@@ -46,6 +56,10 @@ export function DiceTray() {
   const [result, setResult] = useState<RollResult | null>(null);
   const [settled, setSettled] = useState(true);
   const [dice, setDice] = useState<SceneDie[]>(() => sceneDice(DEFAULT_FORMULA, 'normal'));
+  const presets = useRollLog((st) => st.presets);
+  const [editing, setEditing] = useState<Preset | 'new' | null>(null);
+  /** Name of the preset currently in hand, so the log says "Fireball" rather than "8d6". */
+  const [presetLabel, setPresetLabel] = useState<string | null>(null);
 
   // Opening pose: one d20 resting in the middle, inviting a flick.
   const [ctrl] = useState(() => createController([{ p: [0, 1.0, 1], q: [0.31, 0.12, 0.2, 0.92] }]));
@@ -142,8 +156,10 @@ export function DiceTray() {
       if (hand.length) setLast(formulaFromHand(hand, 0));
       setHand([]);
       setResult(r);
+      useRollLog.getState().record(r, hand.length ? presetLabel : null, activeName());
+      setPresetLabel(null);
     },
-    [bounds, ctrl, formula, hand],
+    [bounds, ctrl, formula, hand, presetLabel],
   );
 
   const pan = usePanGesture({
@@ -186,15 +202,28 @@ export function DiceTray() {
   };
 
   const addDie = (sides: DieSides) => {
-    if (hand.length >= 20) return;
+    if (hand.length >= MAX_HAND) return;
     haptic(Haptics.ImpactFeedbackStyle.Light);
+    setPresetLabel(null);
     setHand((h) => [...h, sides]);
   };
   const removeDie = (sides: DieSides) => {
+    setPresetLabel(null);
     setHand((h) => {
       const i = h.lastIndexOf(sides);
       return i < 0 ? h : [...h.slice(0, i), ...h.slice(i + 1)];
     });
+  };
+
+  /** Puts a preset into the hand, ready to flick. Subtracted dice can't be held, so those presets are refused. */
+  const loadPreset = (p: Preset) => {
+    const f = parseFormula(p.formula);
+    if (!f || f.terms.some((t) => t.sign < 0)) return;
+    const dice: DieSides[] = f.terms.flatMap((t) => Array.from({ length: t.count }, () => t.sides)).slice(0, MAX_HAND);
+    haptic(Haptics.ImpactFeedbackStyle.Light);
+    setHand(dice);
+    setModifier(f.modifier);
+    setPresetLabel(p.name);
   };
 
   const rerollOne = (dieId: string) => {
@@ -216,6 +245,7 @@ export function DiceTray() {
     ctrl.phase = 'playing';
     setSettled(false);
     setResult(next);
+    useRollLog.getState().replace(next);
     haptic(Haptics.ImpactFeedbackStyle.Light);
   };
 
@@ -250,7 +280,7 @@ export function DiceTray() {
                 {formatFormula(result.formula)}
                 {result.mode !== 'normal' ? `  ·  ${result.mode === 'advantage' ? 'ADV' : 'DIS'}` : ''}
               </Text>
-              <View style={s.breakdown}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.breakdownScroll} contentContainerStyle={s.breakdown}>
                 {result.dice.map((d) => (
                   <Pressable key={d.id} onPress={() => rerollOne(d.id)} style={[s.chip, d.dropped && s.chipDropped]} hitSlop={4}>
                     <Text style={[s.chipText, d.dropped && s.chipTextDropped]}>
@@ -260,7 +290,7 @@ export function DiceTray() {
                     <Text style={s.chipSub}>d{d.sides}{d.rerolls ? ' ↻' : ''}</Text>
                   </Pressable>
                 ))}
-              </View>
+              </ScrollView>
             </>
           ) : !result && ctrl.phase === 'rest' ? (
             <Text style={s.hint}>Flick to roll {formatFormula(formula)}</Text>
@@ -291,12 +321,28 @@ export function DiceTray() {
           <Text style={s.handText} numberOfLines={1}>
             {hand.length ? formatFormula(formula) : `Last: ${formatFormula(formula)}`}
           </Text>
-          {hand.length > 0 && (
-            <Pressable onPress={() => setHand([])} hitSlop={8}>
+          {hand.length > 0 || modifier !== 0 ? (
+            <Pressable onPress={() => { setHand([]); setModifier(0); }} hitSlop={8}>
               <Text style={s.clear}>Clear</Text>
+            </Pressable>
+          ) : (
+            <Pressable onPress={() => router.push('/history')} hitSlop={8} accessibilityLabel="Roll history">
+              <Text style={s.clear}>History</Text>
             </Pressable>
           )}
         </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.presets} style={s.presetBar}>
+          {presets.map((p) => (
+            <Pressable key={p.id} onPress={() => loadPreset(p)} onLongPress={() => setEditing(p)} style={({ pressed }) => [s.preset, pressed && { opacity: 0.6 }]} accessibilityLabel={`Preset ${p.name}`}>
+              <Text style={s.presetName} numberOfLines={1}>{p.name}</Text>
+              {p.name !== p.formula && <Text style={s.presetFormula} numberOfLines={1}>{p.formula}</Text>}
+            </Pressable>
+          ))}
+          <Pressable onPress={() => setEditing('new')} style={({ pressed }) => [s.preset, s.presetAdd, pressed && { opacity: 0.6 }]} accessibilityLabel="New preset">
+            <Text style={s.presetAddText}>+</Text>
+          </Pressable>
+        </ScrollView>
 
         <View style={s.diceBar}>
           {DIE_SIDES.map((sides) => {
@@ -321,6 +367,13 @@ export function DiceTray() {
           })}
         </View>
       </View>
+      {editing && (
+        <PresetEditor
+          preset={editing === 'new' ? null : editing}
+          initialFormula={hand.length || modifier ? formatFormula(formulaFromHand(hand, modifier)) : ''}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </View>
   );
 }
@@ -332,7 +385,8 @@ const styles = (c: Palette) =>
     resultBox: { height: 132, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 8, marginBottom: 6 },
     total: { fontSize: 48, lineHeight: 54, fontWeight: '700', fontVariant: ['tabular-nums'], letterSpacing: -1.5 },
     formula: { fontSize: 13, color: c.secondaryLabel },
-    breakdown: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6, marginTop: 6, paddingHorizontal: 16, maxHeight: 40, overflow: 'hidden' },
+    breakdownScroll: { flexGrow: 0, alignSelf: 'stretch', marginTop: 6 },
+    breakdown: { flexGrow: 1, justifyContent: 'center', gap: 6, paddingHorizontal: 16 },
     chip: { minWidth: 40, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: c.fill, alignItems: 'center' },
     chipDropped: { opacity: 0.45 },
     chipText: { fontSize: 17, fontWeight: '600', color: c.label, fontVariant: ['tabular-nums'] },
@@ -354,6 +408,13 @@ const styles = (c: Palette) =>
     handText: { fontSize: 15, color: c.secondaryLabel, flex: 1 },
     clear: { fontSize: 15, color: c.accent },
     diceBar: { flexDirection: 'row', justifyContent: 'space-between' },
+    presetBar: { flexGrow: 0, marginHorizontal: -12 },
+    presets: { paddingHorizontal: 12, gap: 8, alignItems: 'center' },
+    preset: { height: 36, paddingHorizontal: 12, borderRadius: 10, backgroundColor: c.fill, justifyContent: 'center', maxWidth: 160 },
+    presetName: { fontSize: 14, fontWeight: '600', color: c.label },
+    presetFormula: { fontSize: 11, color: c.secondaryLabel, fontVariant: ['tabular-nums'] },
+    presetAdd: { width: 36, paddingHorizontal: 0, alignItems: 'center' },
+    presetAddText: { fontSize: 22, color: c.accent, marginTop: -2 },
     dieBtn: { width: 48, height: 58, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 2 },
     dieBtnOn: { backgroundColor: c.fill },
     dieLabel: { fontSize: 12, fontWeight: '500', color: c.label },

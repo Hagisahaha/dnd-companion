@@ -12,10 +12,12 @@ import { createContext, ReactNode, Suspense, useCallback, useContext, useMemo, u
 import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn, FadeInDown, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useCharacters } from '../character/store';
 import { formatFormula, parseFormula } from '../dice/notation';
 import { toPhysical } from '../dice/physical';
 import { RollMode, RollResult, createSecureRng, roll } from '../dice/roll';
 import { simulateThrow } from '../dice/simulate';
+import { useRollLog } from '../state/history';
 import { useRollMode } from '../state/roll';
 import { Palette, usePalette } from '../theme/colors';
 import { CAMERA_FOV, CAMERA_HEIGHT, DiceScene, SceneDie, createController } from './dice/DiceScene';
@@ -58,6 +60,8 @@ export function QuickRollProvider({ children }: { children: ReactNode }) {
       if (!f) return;
       const mode = opts.mode === 'shared' ? useRollMode.getState().consume() : opts.mode ?? 'normal';
       const r = roll(f, mode, rng);
+      const who = useCharacters.getState();
+      useRollLog.getState().record(r, opts.label ?? null, who.activeId ? who.characters[who.activeId]?.name ?? null : null);
       const physical = toPhysical(r.dice);
       const [bx, bz] = bounds();
       // Thrown from just below the screen's bottom edge, toward the upper middle.

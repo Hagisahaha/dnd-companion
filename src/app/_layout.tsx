@@ -14,6 +14,7 @@ export default function RootLayout() {
           <Stack.Screen name="index" />
           <Stack.Screen name="compendium" options={{ animation: 'fade_from_bottom' }} />
           <Stack.Screen name="character" />
+          <Stack.Screen name="history" options={{ presentation: 'modal', headerShown: true }} />
         </Stack>
       </QuickRollProvider>
     </GestureHandlerRootView>
