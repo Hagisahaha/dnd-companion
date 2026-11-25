@@ -30,3 +30,12 @@ Optional: without it, characters live on the device only.
 3. Restart `npx expo start`. Sign in from the avatar button next to the search bar.
 
 Sync is local-first and last-write-wins per character; see `src/sync/merge.ts`.
+
+## Try it on an iPhone (no Apple Developer account)
+
+The app uses only native modules bundled in Expo Go (SDK 58), so no custom build is needed.
+
+1. Install **Expo Go** from the App Store and sign in with the Expo account that belongs to `hagisas-team`.
+2. In Expo Go, open **dnd-companion** under Projects and pick the latest update on branch `preview`.
+
+Publish a new version with `npm run publish:ios -- --message "what changed"` (needs `EXPO_TOKEN`).

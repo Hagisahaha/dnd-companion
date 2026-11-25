@@ -8,7 +8,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.hagisahaha.dndcompanion"
+      "bundleIdentifier": "com.hagisahaha.dndcompanion",
+      "runtimeVersion": {
+        "policy": "sdkVersion"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -30,6 +33,15 @@
     "scheme": "dndcompanion",
     "experiments": {
       "typedRoutes": true
+    },
+    "owner": "hagisas-team",
+    "extra": {
+      "eas": {
+        "projectId": "79e6e74d-806b-4461-9f5b-12376ccdbc0a"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/79e6e74d-806b-4461-9f5b-12376ccdbc0a"
     }
   }
 }
