@@ -20,3 +20,13 @@ npx expo start
 - `scripts/gen-dice-atlas.mts`: regenerates `assets/dice/atlas.png` (`npm run gen:atlas`) after changing die geometry or labels
 
 Native builds need a development build (`npx expo run:ios` / `run:android` or EAS), not Expo Go.
+
+## Cloud sync (Supabase)
+
+Optional: without it, characters live on the device only.
+
+1. In the Supabase dashboard, open **SQL Editor**, paste `supabase/migrations/0001_characters.sql`, and run it.
+2. Copy `.env.example` to `.env` and fill in the project URL and publishable (anon) key from **Project Settings → API**.
+3. Restart `npx expo start`. Sign in from the avatar button next to the search bar.
+
+Sync is local-first and last-write-wins per character; see `src/sync/merge.ts`.

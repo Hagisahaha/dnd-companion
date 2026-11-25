@@ -81,7 +81,7 @@ Nguyên tắc: **ít thao tác nhất, mượt nhất, không thiếu và không
 - **Cử chỉ và animation**: `react-native-gesture-handler`, `react-native-reanimated`.
 - **Bottom sheet**: `@gorhom/bottom-sheet` (khi làm sheet).
 - **Haptics / âm thanh**: `expo-haptics`, `expo-audio`.
-- **State**: `zustand`, lưu bằng AsyncStorage (`src/character/store.ts`), nên app đọc và ghi offline ngay lập tức. Supabase sync sẽ nằm phía sau store này (cần URL và key của project Supabase).
+- **State**: `zustand`, lưu bằng AsyncStorage (`src/character/store.ts`), nên app đọc và ghi offline ngay lập tức. Supabase sync (`src/sync/`) chạy nền phía sau store: tải toàn bộ nhân vật của user, gộp theo bản sửa mới nhất từng nhân vật, đẩy phần server còn thiếu; xoá được ghi bằng tombstone. Đăng nhập email + mật khẩu trong Settings (nút avatar cạnh ô tìm kiếm). Cấu hình trong `.env` (xem `.env.example`).
 - **Dữ liệu tra cứu**: 5etools JSON (`npm run data:fetch` rồi `npm run data:build`) được tiền xử lý thành `src/data/compendium/` gồm index tìm kiếm và một file cho mỗi loại; app chỉ tải khi mở tra cứu, nên không làm chậm khởi động. Homebrew sẽ nạp chồng lên.
   - Quy tắc nội dung: mục nào có bản in mới hơn (`reprintedAs`) thì bỏ bản cũ; loại UA, reskin WoW, screen, sách nấu ăn và đan len.
   - Trong text, xúc xắc (`8d6`, `+5`) bấm vào là roll ngay; link mở mục tương ứng.

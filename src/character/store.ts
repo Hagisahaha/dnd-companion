@@ -8,23 +8,28 @@ import type { Character } from './types';
 interface CharacterState {
   characters: Record<string, Character>;
   activeId: string | null;
-  /** Draft being built in the editor; committed on save. */
+  /** Deleted character ids and when, until the deletion has reached the server. */
+  tombstones: Record<string, number>;
+  /** Persisted state has loaded from disk. */
   hydrated: boolean;
   create: (c: Character) => void;
   update: (id: string, fn: (c: Character) => Character) => void;
   remove: (id: string) => void;
   setActive: (id: string) => void;
+  /** Applied by sync after merging with the server. */
+  applySync: (characters: Record<string, Character>, tombstones: Record<string, number>) => void;
 }
 
 /**
  * Local-first character storage. Writes are immediate and survive app kills;
- * cloud sync (Supabase) will sit behind this store, not in front of it.
+ * cloud sync (src/sync) runs behind it and never blocks a read or write.
  */
 export const useCharacters = create<CharacterState>()(
   persist(
     (set) => ({
       characters: {},
       activeId: null,
+      tombstones: {},
       hydrated: false,
       create: (c) => set((s) => ({ characters: { ...s.characters, [c.id]: c }, activeId: c.id })),
       update: (id, fn) =>
@@ -35,9 +40,19 @@ export const useCharacters = create<CharacterState>()(
       remove: (id) =>
         set((s) => {
           const { [id]: _, ...rest } = s.characters;
-          return { characters: rest, activeId: s.activeId === id ? Object.keys(rest)[0] ?? null : s.activeId };
+          return {
+            characters: rest,
+            tombstones: { ...s.tombstones, [id]: Date.now() },
+            activeId: s.activeId === id ? Object.keys(rest)[0] ?? null : s.activeId,
+          };
         }),
       setActive: (id) => set({ activeId: id }),
+      applySync: (characters, tombstones) =>
+        set((s) => ({
+          characters: Object.fromEntries(Object.entries(characters).map(([k, v]) => [k, migrate(v)])),
+          tombstones,
+          activeId: s.activeId && characters[s.activeId] ? s.activeId : Object.keys(characters)[0] ?? null,
+        })),
     }),
     {
       name: 'characters-v1',
@@ -47,7 +62,7 @@ export const useCharacters = create<CharacterState>()(
         return { ...p, characters: Object.fromEntries(Object.entries(p.characters ?? {}).map(([k, v]) => [k, migrate(v)])) } as never;
       },
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (s) => ({ characters: s.characters, activeId: s.activeId }),
+      partialize: (s) => ({ characters: s.characters, activeId: s.activeId, tombstones: s.tombstones }),
       onRehydrateStorage: () => () => useCharacters.setState({ hydrated: true }),
     },
   ),
