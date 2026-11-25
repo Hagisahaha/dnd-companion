@@ -6,6 +6,7 @@ import { derive, fmtMod, longRest, shortRest } from '../../character/engine';
 import { RULES, getBackground, getSpecies } from '../../character/rules';
 import { useActiveCharacter, useCharacters } from '../../character/store';
 import { ABILITIES, ABILITY_NAME, ABILITY_SHORT, Stat } from '../../character/types';
+import { getEntry, getIndex } from '../../compendium/store';
 import { openEntry } from '../../components/compendium/Entries';
 import { useQuickRoll } from '../../components/QuickRoll';
 import { Button, Picker, Row, Section, Segmented, Stepper, useStyles } from '../../components/ui';
@@ -13,6 +14,19 @@ import { useRollMode } from '../../state/roll';
 import { Palette } from '../../theme/colors';
 
 type Tab = 'actions' | 'core' | 'spells' | 'features';
+
+/** Feats whose numbers the app applies for you, and what it does. Keep in sync with engine.ts / combat.ts. */
+const AUTOMATED: Record<string, string> = {
+  Alert: '+Proficiency Bonus to Initiative',
+  Tough: '+2 HP per level',
+  Speedy: '+10 ft. Speed',
+  Lucky: 'Luck Points tracked under Limited Uses',
+  Defense: '+1 AC while wearing armor',
+  Archery: '+2 to hit with ranged weapons',
+  Dueling: '+2 damage with one-handed melee weapons',
+  'Great Weapon Master': 'Extra damage button on Heavy weapon hits',
+  'War Caster': 'Advantage on concentration saves from the HP screen',
+};
 
 const CONDITIONS = ['Blinded', 'Charmed', 'Deafened', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified', 'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious'];
 
@@ -26,6 +40,8 @@ export default function Sheet() {
   const [explain, setExplain] = useState<{ title: string; stat: Stat } | null>(null);
   const [addingWeapon, setAddingWeapon] = useState(false);
   const [editingWeapon, setEditingWeapon] = useState<string | null>(null);
+  const [addingFeat, setAddingFeat] = useState(false);
+  const featItems = useMemo(() => getIndex().filter((e) => e.cat === 'feat').map((e) => ({ value: e.id, label: e.name, detail: e.subtitle, badge: e.source })), []);
   const [st, pal] = useStyles(styles);
   const d = useMemo(() => (c ? derive(c) : null), [c]);
   const atk = useMemo(() => (c && d ? attacksOf(c, d) : []), [c, d]);
@@ -101,13 +117,27 @@ export default function Sheet() {
 
         {tab === 'actions' && (
           <>
+            {c.classes.some((x) => x.name === 'Barbarian') && (() => {
+              const rage = d.resources.find((r) => r.key === 'rage');
+              const left = rage ? rage.max - rage.used : 0;
+              return (
+                <View style={{ marginHorizontal: 16, marginTop: 12 }}>
+                  {c.raging ? (
+                    <Button kind="destructive" title="End Rage" onPress={() => patch((x) => ({ ...x, raging: false }))} />
+                  ) : (
+                    <Button title={`Enter Rage · ${left} left`} disabled={left <= 0} onPress={() => patch((x) => ({ ...x, raging: true, resourcesUsed: { ...x.resourcesUsed, rage: (x.resourcesUsed.rage ?? 0) + 1 } }))} />
+                  )}
+                  {c.raging && <Text style={st.rageNote}>Raging: resistance to Bludgeoning, Piercing and Slashing; Advantage on Strength checks and saves; Rage damage is included below.</Text>}
+                </View>
+              );
+            })()}
             <Section title="Attacks" style={{ marginTop: 12 }} footer="Tap to roll the attack; the damage button follows on the result. Hold a weapon to edit it.">
               {atk.map((a, i) => (
                 <View key={a.key}>
                   <Row first={i === 0} label={a.name}
                     detail={[a.range, `${a.damage} ${a.damageType}`, a.mastery ? `Mastery: ${a.mastery}` : '', ...a.notes].filter(Boolean).join(' · ')}
                     value={fmtMod(a.toHit.value)} valueStyle={a.proficient ? st.profValue : undefined}
-                    onPress={() => quickRoll(`1d20${a.toHit.value - 2 * c.exhaustion >= 0 ? '+' : ''}${a.toHit.value - 2 * c.exhaustion}`, { label: `${a.name} attack`, mode: 'shared', then: { label: `Roll damage ${a.damage}`, formula: a.damage } })}
+                    onPress={() => quickRoll(`1d20${a.toHit.value - 2 * c.exhaustion >= 0 ? '+' : ''}${a.toHit.value - 2 * c.exhaustion}`, { label: `${a.name} attack`, mode: 'shared', then: [{ label: `Roll damage ${a.damage}`, formula: a.damage }, ...a.extras.map((x) => ({ label: `${x.label} (${x.formula})`, formula: x.formula }))] })}
                     onLongPress={() => (a.key === 'unarmed' ? setExplain({ title: a.name, stat: a.toHit }) : setEditingWeapon(a.key))}
                     right={<View />} />
                   {a.twoHanded && (
@@ -240,7 +270,7 @@ export default function Sheet() {
               if (!list || !sc) return null;
               const mine = spl.filter((x) => x.className === cl.name);
               const cantrips = mine.filter((x) => x.level === 0).length;
-              const prepared = mine.filter((x) => x.level > 0 && x.prepared).length;
+              const prepared = mine.filter((x) => x.level > 0 && x.prepared && !x.always).length;
               const levels = [...new Set(mine.map((x) => x.level))];
               return (
                 <View key={cl.name}>
@@ -251,8 +281,8 @@ export default function Sheet() {
                   {levels.map((lvl) => (
                     <Section key={lvl} title={lvl === 0 ? 'Cantrips' : `Level ${lvl}`}>
                       {mine.filter((x) => x.level === lvl).map((x, i) => (
-                        <Row key={x.id} first={i === 0} label={x.name}
-                          detail={[x.time, x.range, x.concentration ? 'Concentration' : '', x.ritual ? 'Ritual' : '', !x.prepared ? 'Not prepared' : ''].filter(Boolean).join(' · ')}
+                        <Row key={x.id + (x.always ? '-a' : '')} first={i === 0} label={x.name}
+                          detail={[x.always ? 'Always prepared' : '', x.time, x.range, x.concentration ? 'Concentration' : '', x.ritual ? 'Ritual' : '', !x.prepared ? 'Not prepared' : ''].filter(Boolean).join(' · ')}
                           value={x.attack ? fmtMod(x.attack.value) : x.save ? `DC ${x.save.dc}` : x.effects(x.level)[0]?.formula ?? ''}
                           valueStyle={x.prepared ? st.profValue : st.dim}
                           onPress={() => router.push({ pathname: '/character/cast', params: { id: x.id, cls: x.className } })}
@@ -270,13 +300,35 @@ export default function Sheet() {
         )}
 
         {tab === 'features' && (
-          <Section title="Features" style={{ marginTop: 12 }}>
+          <>
+          <Section title="Feats" style={{ marginTop: 12 }} footer="Hold a feat to remove it. Ability increases from feats go in Edit → Bonuses.">
+            {c.feats.map((id, i) => {
+              const e = getEntry(id);
+              const auto = AUTOMATED[e?.name ?? ''];
+              return (
+                <Row key={id} first={i === 0} label={e?.name ?? id} detail={auto ? `Applied: ${auto}` : e?.subtitle}
+                  onPress={() => openEntry(id)} onLongPress={() => patch((x) => ({ ...x, feats: x.feats.filter((f) => f !== id) }))} />
+              );
+            })}
+            <Row first={c.feats.length === 0} label="Add feat" valueStyle={{ color: pal.accent }} onPress={() => setAddingFeat(true)} />
+          </Section>
+          <Section title="Features">
             {d.features.map((f, i) => (
               <Row key={`${f.source}-${f.name}-${f.level}`} first={i === 0} label={f.name} detail={`${f.source} · Level ${f.level}`} onPress={f.id ? () => openEntry(f.id!) : undefined} />
             ))}
           </Section>
+          </>
         )}
       </ScrollView>
+
+      <Picker
+        visible={addingFeat}
+        title="Add Feat"
+        items={featItems}
+        value={null}
+        onPick={(id) => patch((x) => (x.feats.includes(id) ? x : { ...x, feats: [...x.feats, id] }))}
+        onClose={() => setAddingFeat(false)}
+      />
 
       <Picker
         visible={addingWeapon}
@@ -399,6 +451,7 @@ const styles = (c: Palette) =>
     dim: { color: c.tertiaryLabel },
     counts: { fontSize: 13, color: c.secondaryLabel, marginHorizontal: 32, marginBottom: 8, marginTop: 4 },
     over: { color: c.red, fontWeight: '700' },
+    rageNote: { fontSize: 13, color: c.red, marginTop: 8, textAlign: 'center', lineHeight: 18 },
     resRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, gap: 12 },
     divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.separator },
     resName: { fontSize: 17, color: c.label },

@@ -3,7 +3,7 @@
  * (classes, subclasses, species, backgrounds, armor, skills) for the 2024 rules.
  * Run: npm run data:build  (runs after the compendium build)
  */
-import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Json, RAW, isOfficial, keep, read, resolveCopies, stripSrc } from './lib.mts';
 
@@ -20,6 +20,38 @@ const cell = (v: Json): string =>
   : v?.type === 'dice' ? v.toRoll.map((d: Json) => `${d.number}d${d.faces}`).join('+')
   : v?.value !== undefined ? String(v.value) : '';
 const id = (cat: string, idName: string, source: string) => `${cat}:${idName}|${source}`.toLowerCase();
+
+// Spell references without a source ("bane") default to the 2014 book, which the compendium drops
+// when a 2024 printing exists. Resolve by name against what the compendium actually carries.
+const compendiumIds: string[] = JSON.parse(readFileSync('src/data/compendium/index.json', 'utf8')).entries.map((e: Json) => e[0]);
+const spellIds = new Set(compendiumIds.filter((i) => i.startsWith('spell:')));
+function spellId(ref: string): string | null {
+  const [name, source] = ref.replace(/#c$/, '').toLowerCase().split('|');
+  for (const src of [source, 'xphb', 'phb'].filter(Boolean)) if (spellIds.has(`spell:${name}|${src}`)) return `spell:${name}|${src}`;
+  return [...spellIds].find((i) => i.startsWith(`spell:${name}|`)) ?? null;
+}
+
+/**
+ * Spells a class or subclass always has prepared, by class level: [{ level, ids }].
+ * Option groups that make the player pick (entries with a `name`, e.g. Circle of the Land
+ * terrains) and "choose from a filter" objects are skipped: they need a choice we don't ask for.
+ */
+function alwaysPrepared(additional: Json[] | undefined): { level: number; ids: string[] }[] {
+  const out = new Map<number, string[]>();
+  for (const a of additional ?? []) {
+    if (a.name) continue;
+    for (const key of ['prepared', 'known']) {
+      for (const [lvl, list] of Object.entries(a[key] ?? {})) {
+        if (!/^\d+$/.test(lvl)) continue;
+        // Usually an array; sometimes { _: [...] } (no recharge) — anything else is a choice.
+        const arr: Json[] = Array.isArray(list) ? list : Array.isArray((list as Json)?._) ? (list as Json)._ : [];
+        const ids = arr.filter((x) => typeof x === 'string').map((x: string) => spellId(x)).filter((x): x is string => !!x);
+        out.set(Number(lvl), [...(out.get(Number(lvl)) ?? []), ...ids]);
+      }
+    }
+  }
+  return [...out].sort((a, b) => a[0] - b[0]).map(([level, ids]) => ({ level, ids }));
+}
 
 // ---------- classes ----------
 const files = readdirSync(join(RAW, 'class')).filter((f) => f.startsWith('class-'));
@@ -70,6 +102,7 @@ const classes = rawClasses
         name: s.name,
         shortName: s.shortName,
         source: s.source,
+        alwaysPrepared: alwaysPrepared(s.additionalSpells),
         features: (s.subclassFeatures ?? []).map((r: Json) => {
           const ref = typeof r === 'string' ? r : r.subclassFeature;
           const [name, className, classSource, short, subSource, level] = ref.split('|');
@@ -100,6 +133,7 @@ const classes = rawClasses
       table: { labels, cols },
       features: features.map(({ subclass: _, ...f }: Json) => f),
       subclassLevels,
+      alwaysPrepared: alwaysPrepared(c.additionalSpells),
       asiLevels: features.filter((f: Json) => f.name === 'Ability Score Improvement').map((f: Json) => f.level),
       multiclass: { armor: c.multiclassing?.proficienciesGained?.armor ?? [], weapons: c.multiclassing?.proficienciesGained?.weapons ?? [] },
       subclasses: scs,

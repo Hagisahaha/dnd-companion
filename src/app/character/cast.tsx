@@ -1,4 +1,4 @@
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { CastWith, castOptions, castSpell, spells } from '../../character/combat';
@@ -8,7 +8,7 @@ import { ABILITY_NAME } from '../../character/types';
 import { getEntry } from '../../compendium/store';
 import { Entries } from '../../components/compendium/Entries';
 import { useQuickRoll } from '../../components/QuickRoll';
-import { Button, Row, Section, Segmented, useStyles } from '../../components/ui';
+import { Button, Row, Section, Segmented, useStyles, close } from '../../components/ui';
 import { Palette } from '../../theme/colors';
 
 /** Cast a spell: pick a slot, spend it, start concentration, then roll attack/damage at that level. */
@@ -40,7 +40,7 @@ export default function Cast() {
 
   return (
     <ScrollView style={st.root} contentContainerStyle={st.content}>
-      <Stack.Screen options={{ title: '', headerRight: () => <Pressable onPress={() => router.back()} hitSlop={8}><Text style={st.done}>Done</Text></Pressable> }} />
+      <Stack.Screen options={{ title: '', headerRight: () => <Pressable onPress={() => close()} hitSlop={8}><Text style={st.done}>Done</Text></Pressable> }} />
       <Text style={st.title}>{spell.name}</Text>
       <Text style={st.sub}>{entry.subtitle} · {spell.className}</Text>
       <Text style={st.meta}>{[spell.time, spell.range, spell.duration].join(' · ')}</Text>
@@ -79,6 +79,9 @@ export default function Cast() {
         </View>
       )}
 
+      {spell.always ? (
+        <Text style={st.always}>Always prepared from your {spell.className} features. It doesn&apos;t count against your prepared spells.</Text>
+      ) : (
       <Section style={{ marginHorizontal: 0, marginTop: 18 }}>
         {isWizard && spell.level > 0 && pick && (
           <Row first label="Prepared" right={<Switch value={pick.prepared} onValueChange={(prepared) => update(c.id, (x) => ({ ...x, spells: x.spells.map((y) => (y.id === id && y.className === cls ? { ...y, prepared } : y)) }))} />} />
@@ -86,9 +89,10 @@ export default function Cast() {
         <Row first={!(isWizard && spell.level > 0)} label={isWizard ? 'Remove from spellbook' : 'Remove spell'} valueStyle={{ color: pal.red }} value=""
           onPress={() => {
             update(c.id, (x) => ({ ...x, spells: x.spells.filter((y) => !(y.id === id && y.className === cls)) }));
-            router.back();
+            close();
           }} />
       </Section>
+      )}
 
       <View style={{ marginTop: 6 }}>
         <Entries entries={entry.entries} />
@@ -111,4 +115,5 @@ const styles = (c: Palette) =>
     castDoneText: { fontSize: 15, color: c.green, fontWeight: '600', textAlign: 'center' },
     rolls: { marginTop: 14, gap: 10 },
     save: { fontSize: 15, color: c.label, textAlign: 'center', paddingVertical: 4 },
+    always: { fontSize: 13, color: c.secondaryLabel, marginTop: 18, textAlign: 'center' },
   });

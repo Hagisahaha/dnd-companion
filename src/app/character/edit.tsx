@@ -3,14 +3,23 @@ import { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { POINT_COST, STANDARD_ARRAY, derive, fmtMod, mod } from '../../character/engine';
 import { RULES, getArmor, getBackground, getClass, getSpecies } from '../../character/rules';
+import { resolveLink } from '../../compendium/store';
 import { blankCharacter, useCharacters } from '../../character/store';
 import { ABILITIES, ABILITY_NAME, ABILITY_SHORT, Ability, Character, ProfLevel } from '../../character/types';
-import { Button, Picker, PickerItem, Row, Section, Segmented, Stepper, useStyles } from '../../components/ui';
+import { Button, Picker, PickerItem, Row, Section, Segmented, Stepper, useStyles, close } from '../../components/ui';
 import { Palette } from '../../theme/colors';
 
 type PickerKind = { kind: 'class'; index: number } | { kind: 'subclass'; index: number } | { kind: 'species' } | { kind: 'background' } | { kind: 'armor' };
 
 const cap = (s: string) => s.replace(/\b\w/g, (m) => m.toUpperCase());
+
+/** "magic initiate; cleric|xphb" -> the compendium feat (the variant is a choice inside the feat). */
+function featIdFor(ref: string | null): string | null {
+  if (!ref || ref === 'anyFromCategory') return null;
+  const [name, source] = ref.split('|');
+  // resolveLink falls back to the 2024 printing when the referenced book's version was superseded.
+  return resolveLink('feat', `${name.split(';')[0].trim()}${source ? `|${source}` : ''}`);
+}
 
 /** Ability priority for a class: its primary abilities, then CON, then DEX, then the rest. */
 function priority(className: string): Ability[] {
@@ -56,7 +65,7 @@ export default function EditCharacter() {
     } else {
       createChar({ ...next, hp: { current: derive(next).maxHp.value, temp: 0 } });
     }
-    router.back();
+    close();
   };
 
   // ---------- pickers ----------
@@ -103,7 +112,11 @@ export default function EditCharacter() {
           value: c.backgroundId,
           onPick: (v) => {
             const b = getBackground(v)!;
-            set({ backgroundId: v, backgroundBonus: recommendedBonus(c.classes[0].name, b.abilities) });
+            // The background's origin feat replaces the previous background's one.
+            const prev = featIdFor(getBackground(c.backgroundId)?.feat ?? null);
+            const next = featIdFor(b.feat);
+            const feats = c.feats.filter((f) => f !== prev);
+            set({ backgroundId: v, backgroundBonus: recommendedBonus(c.classes[0].name, b.abilities), feats: next && !feats.includes(next) ? [...feats, next] : feats });
           },
         };
       case 'armor':
@@ -162,7 +175,7 @@ export default function EditCharacter() {
         options={{
           title: existing ? 'Edit Character' : 'New Character',
           headerLeft: () => (
-            <Pressable onPress={() => router.back()} hitSlop={8}>
+            <Pressable onPress={() => close()} hitSlop={8}>
               <Text style={st.headerBtn}>Cancel</Text>
             </Pressable>
           ),

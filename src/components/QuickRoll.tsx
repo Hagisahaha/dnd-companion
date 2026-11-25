@@ -29,7 +29,7 @@ export interface QuickRollOptions {
   /** 'shared' reads (and resets) the ADV/DIS toggle; use it for d20 tests. */
   mode?: RollMode | 'shared';
   /** Follow-up shown on the result card, e.g. roll damage after an attack. */
-  then?: { label: string; formula: string };
+  then?: { label: string; formula: string } | { label: string; formula: string }[];
 }
 type QuickRoll = (formula: string, opts?: QuickRollOptions) => void;
 const Ctx = createContext<QuickRoll>(() => {});
@@ -137,11 +137,12 @@ export function QuickRollProvider({ children }: { children: ReactNode }) {
                 </View>
                 <Text style={[s.total, shown.r.crit === 'success' && { color: c.green }, shown.r.crit === 'fail' && { color: c.red }]}>{shown.r.total}</Text>
               </View>
-              {shown.opts.then && (
+              {([] as { label: string; formula: string }[]).concat(shown.opts.then ?? []).map((t, i) => (
                 <Pressable
-                  style={({ pressed }) => [s.then, pressed && { opacity: 0.7 }]}
+                  key={t.label}
+                  // A miss on a natural 1 still shows the buttons: the DM decides what hits.
+                  style={({ pressed }) => [s.then, i > 0 && s.thenAlt, pressed && { opacity: 0.7 }]}
                   onPress={() => {
-                    const t = shown.opts.then!;
                     // A natural 20 doubles the damage dice (2024: roll the dice twice).
                     const f = parseFormula(t.formula);
                     const crit = shown.r.crit === 'success' && f;
@@ -149,9 +150,9 @@ export function QuickRollProvider({ children }: { children: ReactNode }) {
                     quickRoll(formula, { label: crit ? `${t.label} (crit)` : t.label });
                   }}
                 >
-                  <Text style={s.thenText}>{shown.r.crit === 'success' ? `${shown.opts.then.label} · Critical` : shown.opts.then.label}</Text>
+                  <Text style={[s.thenText, i > 0 && s.thenAltText]}>{shown.r.crit === 'success' ? `${t.label} · Critical` : t.label}</Text>
                 </Pressable>
-              )}
+              ))}
             </Animated.View>
           )}
         </Animated.View>
@@ -173,4 +174,6 @@ const styles = (c: Palette) =>
     total: { fontSize: 38, fontWeight: '700', color: c.label, fontVariant: ['tabular-nums'] },
     then: { height: 48, borderRadius: 14, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },
     thenText: { color: c.onAccent, fontSize: 17, fontWeight: '600' },
+    thenAlt: { backgroundColor: c.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: c.separator },
+    thenAltText: { color: c.accent },
   });

@@ -89,13 +89,16 @@ Nguyên tắc: **ít thao tác nhất, mượt nhất, không thiếu và không
   - Đã có: ability, save, skill (proficient/expertise, Jack of All Trades), AC (giáp, Unarmored Defense của Barbarian/Monk/Draconic), speed, HP, hit dice, spell DC/attack, slot (đơn class, multiclass, third caster, pact), resource có giới hạn số lần dùng cùng cách hồi khi nghỉ, damage/heal/temp HP, concentration DC, death save, short/long rest, exhaustion (−2 cho mọi d20 test).
   - Attack (`src/character/combat.ts`): vũ khí 2024 với to-hit/damage, finesse, versatile, mastery (nếu class có Weapon Mastery), proficiency theo class, Martial Arts của Monk, Unarmed Strike; ghi chú Rage damage.
   - Spell: danh sách theo class (Wizard có spellbook + prepared), giới hạn cantrip/prepared, cast trừ slot hoặc pact slot, ritual, tự bật concentration; damage cantrip theo level nhân vật, upcast theo slot, healing cộng modifier.
-  - Chưa có: feat và hiệu ứng magic item tự động (hiện nhập tay qua mục Bonuses), spell luôn-prepared của subclass, Rage/Sneak Attack tự cộng vào damage.
+  - Tự động: spell luôn-prepared của class/subclass (domain, oath, patron…; không tính vào giới hạn), Rage (bật/tắt, cộng damage), nút Sneak Attack, feat Alert/Tough/Speedy/Lucky/War Caster/Great Weapon Master và fighting style Archery/Defense/Dueling; feat gốc của background tự thêm.
+  - Chưa có: hiệu ứng magic item tự động, tăng ability từ feat (vẫn nhập tay trong Bonuses), lựa chọn nhánh của subclass (ví dụ địa hình của Circle of the Land).
 
 ## 6. Hành vi đã chốt khi làm
 
 - ADV/DIS dùng chung giữa khay và sheet, và **tự về Normal sau mỗi roll**: trong game advantage tính theo từng roll, nên để nút dính sẽ làm sai các roll sau mà người chơi không để ý.
 - Khi tạo nhân vật, standard array và +2/+1 của background tự xếp theo ability chính của class; người chơi vẫn đổi được.
 - Nat 20 trên attack: nút roll damage tự gấp đôi số xúc xắc (luật 2024).
+
+- Lịch sử roll lưu 200 roll gần nhất (khay, sheet, mô tả luật), chạm một dòng để roll lại; preset là chip phía trên hàng xúc xắc.
 
 ## 7. Còn chờ
 

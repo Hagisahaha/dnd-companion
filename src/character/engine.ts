@@ -106,6 +106,7 @@ export function derive(c: Character): Derived {
 
   const initParts: Part[] = [{ label: 'DEX modifier', value: mods.dex }];
   if (jack) initParts.push({ label: 'Jack of All Trades', value: Math.floor(pb / 2) });
+  if (hasFeat(c, 'Alert')) initParts.push({ label: 'Alert', value: pb });
   const initiative = stat(initParts, c, 'initiative');
 
   const perception = skills.find((s) => s.key === 'perception')!;
@@ -128,6 +129,7 @@ export function derive(c: Character): Derived {
   const best = candidates.reduce((a, b) => (b.reduce((s, p) => s + p.value, 0) > a.reduce((s, p) => s + p.value, 0) ? b : a));
   const acParts = [...best];
   if (c.shield) acParts.push({ label: 'Shield', value: 2 });
+  if (armor && hasFeat(c, 'Defense')) acParts.push({ label: 'Defense', value: 1 });
   if (c.acBonus) acParts.push({ label: 'Other bonuses', value: c.acBonus });
   const ac = stat(acParts, c, 'ac');
   if (armor?.kind === 'heavy' && armor.strength && scores.str.value < armor.strength) warnings.push(`${armor.name} needs STR ${armor.strength}: speed −10 ft.`);
@@ -141,6 +143,7 @@ export function derive(c: Character): Derived {
     if (v) speedParts.push({ label: 'Unarmored Movement', value: v });
   }
   if (levelOf('Barbarian') >= 5 && armor?.kind !== 'heavy') speedParts.push({ label: 'Fast Movement', value: 10 });
+  if (hasFeat(c, 'Speedy')) speedParts.push({ label: 'Speedy', value: 10 });
   if (armor?.kind === 'heavy' && armor.strength && scores.str.value < armor.strength) speedParts.push({ label: 'Heavy armor (STR too low)', value: -10 });
   const speed = stat(speedParts, c, 'speed');
 
@@ -154,6 +157,7 @@ export function derive(c: Character): Derived {
   });
   hpParts.push({ label: `CON modifier × ${level}`, value: mods.con * level });
   if (species?.name === 'Dwarf' && species.source === 'XPHB') hpParts.push({ label: 'Dwarven Toughness', value: level });
+  if (hasFeat(c, 'Tough')) hpParts.push({ label: 'Tough', value: 2 * level });
   if (c.hpPerLevelBonus) hpParts.push({ label: 'Other bonuses', value: c.hpPerLevelBonus * level });
   const maxHp = stat(hpParts, c, 'maxHp');
 
@@ -247,6 +251,8 @@ export function derive(c: Character): Derived {
         break;
     }
   }
+
+  if (hasFeat(c, 'Lucky')) add('lucky', 'Luck Points', pb, 'none', c.feats.find((f) => f.startsWith('feat:lucky|')) ?? null);
 
   // ---- features gained so far ----
   const features: Derived['features'] = [];
@@ -342,13 +348,17 @@ export function longRest(c: Character): Character {
     pactUsed: 0,
     resourcesUsed: {},
     exhaustion: Math.max(0, c.exhaustion - 1),
+    raging: false,
   });
 }
 
 /** Fills fields added after a character was first saved, so old saves keep loading. */
 export function migrate(c: Character): Character {
-  return { ...newCharacter(c.id), ...c, weapons: c.weapons ?? [], spells: c.spells ?? [] };
+  return { ...newCharacter(c.id), ...c, weapons: c.weapons ?? [], spells: c.spells ?? [], feats: c.feats ?? [], raging: c.raging ?? false };
 }
+
+/** Feats are matched by name so 2024 and setting printings of the same feat both count. */
+export const hasFeat = (c: Character, name: string) => (c.feats ?? []).some((id) => id.startsWith(`feat:${name.toLowerCase()}|`));
 
 export function newCharacter(id: string): Character {
   const now = Date.now();
@@ -359,7 +369,7 @@ export function newCharacter(id: string): Character {
     backgroundBonus: {}, otherBonus: {}, skills: {}, extraSaves: [],
     armorId: null, shield: false, acBonus: 0, hpPerLevelBonus: 0,
     hp: { current: 0, temp: 0 }, deathSaves: { success: 0, fail: 0 }, hitDiceUsed: {}, slotsUsed: [], pactUsed: 0,
-    resourcesUsed: {}, conditions: [], exhaustion: 0, concentration: null, weapons: [], spells: [], overrides: {}, notes: '',
+    resourcesUsed: {}, conditions: [], exhaustion: 0, concentration: null, feats: [], raging: false, weapons: [], spells: [], overrides: {}, notes: '',
   };
 }
 

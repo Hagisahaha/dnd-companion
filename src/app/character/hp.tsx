@@ -1,11 +1,11 @@
-import { router, Stack } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { applyDamage, applyHealing, applyTempHp, derive, fmtMod } from '../../character/engine';
+import { applyDamage, applyHealing, applyTempHp, derive, fmtMod, hasFeat } from '../../character/engine';
 import { useActiveCharacter, useCharacters } from '../../character/store';
 import { useQuickRoll } from '../../components/QuickRoll';
-import { useStyles } from '../../components/ui';
+import { useStyles, close } from '../../components/ui';
 import { Palette } from '../../theme/colors';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
@@ -15,7 +15,7 @@ export default function HpPad() {
   const update = useCharacters((s) => s.update);
   const quickRoll = useQuickRoll();
   const [entry, setEntry] = useState('');
-  const [note, setNote] = useState<{ text: string; roll?: { formula: string; label: string } } | null>(null);
+  const [note, setNote] = useState<{ text: string; roll?: { formula: string; label: string; advantage?: boolean } } | null>(null);
   const [st, pal] = useStyles(styles);
   const d = useMemo(() => (c ? derive(c) : null), [c]);
   if (!c || !d) return null;
@@ -29,7 +29,8 @@ export default function HpPad() {
       if (out.instantDeath) setNote({ text: 'Massive damage: the remaining damage equals or exceeds your max HP. You die.' });
       else if (out.concentrationDc) {
         const save = d.saves.con.value - 2 * c.exhaustion;
-        setNote({ text: `Concentration on ${c.concentration}: Constitution save DC ${out.concentrationDc}`, roll: { formula: `1d20${save >= 0 ? '+' : ''}${save}`, label: `CON save DC ${out.concentrationDc}` } });
+        const warCaster = hasFeat(c, 'War Caster');
+        setNote({ text: `Concentration on ${c.concentration}: Constitution save DC ${out.concentrationDc}${warCaster ? ' (War Caster: Advantage)' : ''}`, roll: { formula: `1d20${save >= 0 ? '+' : ''}${save}`, label: `CON save DC ${out.concentrationDc}`, advantage: warCaster } });
       } else if (out.character.hp.current === 0 && c.hp.current > 0) setNote({ text: 'You drop to 0 HP and fall Unconscious. Roll death saves at the start of your turns.' });
       else setNote(null);
     } else if (kind === 'heal') {
@@ -47,7 +48,7 @@ export default function HpPad() {
 
   return (
     <SafeAreaView style={st.root} edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Hit Points', headerRight: () => <Pressable onPress={() => router.back()} hitSlop={8}><Text style={st.done}>Done</Text></Pressable> }} />
+      <Stack.Screen options={{ title: 'Hit Points', headerRight: () => <Pressable onPress={() => close()} hitSlop={8}><Text style={st.done}>Done</Text></Pressable> }} />
       <View style={st.top}>
         <Text style={st.big}>
           {c.hp.current}
@@ -72,7 +73,7 @@ export default function HpPad() {
           <View style={st.note}>
             <Text style={st.noteText}>{note.text}</Text>
             {note.roll && (
-              <Pressable onPress={() => quickRoll(note.roll!.formula, { label: note.roll!.label, mode: 'shared' })} style={st.noteBtn}>
+              <Pressable onPress={() => quickRoll(note.roll!.formula, { label: note.roll!.label, mode: note.roll!.advantage ? 'advantage' : 'shared' })} style={st.noteBtn}>
                 <Text style={st.noteBtnText}>Roll {fmtMod(Number(note.roll.formula.slice(4)) || 0)}</Text>
               </Pressable>
             )}

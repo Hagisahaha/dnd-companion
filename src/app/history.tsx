@@ -1,8 +1,8 @@
-import { router, Stack } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useMemo } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useQuickRoll } from '../components/QuickRoll';
-import { useStyles } from '../components/ui';
+import { useStyles, close } from '../components/ui';
 import { HistoryEntry, useRollLog } from '../state/history';
 import { Palette, usePalette } from '../theme/colors';
 
@@ -50,7 +50,7 @@ export default function History() {
           headerTitleStyle: { color: c.label },
           headerShadowVisible: false,
           headerLeft: () => history.length ? <Pressable onPress={clear} hitSlop={8}><Text style={st.clear}>Clear</Text></Pressable> : null,
-          headerRight: () => <Pressable onPress={() => router.back()} hitSlop={8}><Text style={st.done}>Done</Text></Pressable>,
+          headerRight: () => <Pressable onPress={() => close()} hitSlop={8}><Text style={st.done}>Done</Text></Pressable>,
         }}
       />
       <FlatList

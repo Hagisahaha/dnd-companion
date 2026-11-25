@@ -2,7 +2,7 @@
  * Attacks and spells, built on top of `derive`. Pure functions, unit tested.
  */
 import { getEntry } from '../compendium/store';
-import { Derived, derive, signed } from './engine';
+import { Derived, derive, hasFeat, signed } from './engine';
 import { MULTICLASS_SLOTS, THIRD_CASTERS, WeaponRules, getClass, getWeapon, tableValue } from './rules';
 import { ABILITY_SHORT, Ability, Character, Part, Stat } from './types';
 
@@ -49,6 +49,8 @@ export interface Attack {
   mastery: string | null;
   proficient: boolean;
   notes: string[];
+  /** Optional damage the player chooses to add (Sneak Attack, Great Weapon Master). */
+  extras: { label: string; formula: string }[];
 }
 
 function proficientWith(c: Character, w: WeaponRules): boolean {
@@ -78,6 +80,9 @@ export function attacks(c: Character, d: Derived = derive(c)): Attack[] {
   const barbarian = c.classes.find((x) => x.name === 'Barbarian');
   const rage = barbarian ? tableValue(getClass('Barbarian')!, 'Rage Damage', barbarian.level) : null;
   const hasMastery = d.features.some((f) => f.name === 'Weapon Mastery');
+  const rogue = c.classes.find((x) => x.name === 'Rogue');
+  const sneak = rogue ? tableValue(getClass('Rogue')!, 'Sneak Attack', rogue.level) : null;
+  const raging = !!(rage && c.raging);
   const out: Attack[] = [];
 
   for (const wpn of c.weapons) {
@@ -90,46 +95,60 @@ export function attacks(c: Character, d: Derived = derive(c)): Attack[] {
     const parts: Part[] = [{ label: `${ABILITY_SHORT[ability]} modifier`, value: d.mods[ability] }];
     if (proficient) parts.push({ label: 'Proficiency', value: d.pb });
     if (wpn.bonus) parts.push({ label: 'Magic', value: wpn.bonus });
+    if (w.ranged && hasFeat(c, 'Archery')) parts.push({ label: 'Archery', value: 2 });
     let die = w.damage;
     const notes: string[] = [];
     if (isMonkWeapon && martialArts && dieSize(martialArts) > dieSize(die)) {
       die = martialArts;
       notes.push('Martial Arts die');
     }
-    const dmgMod = d.mods[ability] + wpn.bonus;
-    if (rage && ability === 'str') notes.push(`Raging: ${rage} damage`);
+    let flat = d.mods[ability] + wpn.bonus;
+    const rageBonus = raging && ability === 'str' ? Number(rage!.replace('+', '')) || 0 : 0;
+    if (rageBonus) notes.push(`incl. Rage ${rage}`);
+    else if (rage && ability === 'str') notes.push(`Rage adds ${rage}`);
+    flat += rageBonus;
+    // Dueling: one-handed melee only, so not for the two-handed grip or two-handed weapons.
+    const dueling = !w.ranged && !w.properties.includes('two-handed') && hasFeat(c, 'Dueling') ? 2 : 0;
+    if (dueling) notes.push('incl. Dueling +2 (one-handed)');
     if (!proficient) notes.push('Not proficient');
+    const damage = withMod(die, flat + dueling);
+    const extras: Attack['extras'] = [];
+    if (sneak && (w.ranged || w.properties.includes('finesse'))) extras.push({ label: `+ Sneak Attack ${sneak}`, formula: addDice(damage, sneak, 1) });
+    if (w.properties.includes('heavy') && hasFeat(c, 'Great Weapon Master')) extras.push({ label: `+ Great Weapon Master +${d.pb}`, formula: withMod(die, flat + d.pb) });
     out.push({
       key: wpn.key,
       name: wpn.bonus ? `${w.name} +${wpn.bonus}` : w.name,
       itemId: w.id,
       toHit: mkStat(parts),
-      damage: withMod(die, dmgMod),
-      twoHanded: w.versatile ? withMod(w.versatile, dmgMod) : null,
+      damage,
+      twoHanded: w.versatile ? withMod(w.versatile, flat) : null,
       damageType: w.damageType,
       range: w.range ? `${w.range} ft.` : w.properties.includes('reach') ? '10 ft.' : '5 ft.',
       properties: w.properties,
       mastery: hasMastery ? w.mastery : null,
       proficient,
       notes,
+      extras,
     });
   }
 
   // Unarmed Strike (2024): 1 + STR bludgeoning; monks use the Martial Arts die and may use DEX.
   const uAbility: Ability = monkLevel && d.mods.dex > d.mods.str ? 'dex' : 'str';
+  const uRage = raging && uAbility === 'str' ? Number(rage!.replace('+', '')) || 0 : 0;
   out.push({
     key: 'unarmed',
     name: 'Unarmed Strike',
     itemId: null,
     toHit: mkStat([{ label: `${ABILITY_SHORT[uAbility]} modifier`, value: d.mods[uAbility] }, { label: 'Proficiency', value: d.pb }]),
-    damage: martialArts ? withMod(martialArts, d.mods[uAbility]) : String(Math.max(0, 1 + d.mods.str)),
+    damage: martialArts ? withMod(martialArts, d.mods[uAbility] + uRage) : String(Math.max(0, 1 + d.mods.str + uRage)),
     twoHanded: null,
     damageType: 'bludgeoning',
     range: '5 ft.',
     properties: [],
     mastery: null,
     proficient: true,
-    notes: rage && uAbility === 'str' ? [`Raging: ${rage} damage`] : [],
+    notes: uRage ? [`incl. Rage ${rage}`] : rage && uAbility === 'str' ? [`Rage adds ${rage}`] : [],
+    extras: [],
   });
   return out;
 }
@@ -150,6 +169,8 @@ export interface SpellView {
   level: number;
   className: string;
   prepared: boolean;
+  /** Granted by a class or subclass feature: always prepared, doesn't count against the limit. */
+  always: boolean;
   school: string;
   time: string;
   range: string;
@@ -200,9 +221,23 @@ export function spellListFor(className: string, subclass: string | null): string
   return sub && THIRD_CASTERS[sub] ? 'Wizard' : null;
 }
 
+/** Spells granted by class or subclass at the current levels (domain, oath, patron spells…). */
+export function alwaysPreparedSpells(c: Character): { id: string; className: string }[] {
+  const out: { id: string; className: string }[] = [];
+  for (const cl of c.classes) {
+    const k = getClass(cl.name);
+    if (!k) continue;
+    const groups = [...k.alwaysPrepared, ...(k.subclasses.find((s) => s.shortName === cl.subclass)?.alwaysPrepared ?? [])];
+    for (const g of groups) if (g.level <= cl.level) for (const id of g.ids) out.push({ id, className: cl.name });
+  }
+  return out;
+}
+
 export function spells(c: Character, d: Derived = derive(c)): SpellView[] {
   const out: SpellView[] = [];
-  for (const pick of c.spells) {
+  const granted = alwaysPreparedSpells(c).filter((g) => !c.spells.some((s) => s.id === g.id && s.className === g.className));
+  const picks = [...c.spells.map((s) => ({ ...s, always: false })), ...granted.map((g) => ({ ...g, prepared: true, always: true }))];
+  for (const pick of picks) {
     const e = getEntry(pick.id);
     if (!e) continue;
     const data = e.data as unknown as SpellData;
@@ -239,6 +274,7 @@ export function spells(c: Character, d: Derived = derive(c)): SpellView[] {
       level: data.level,
       className: pick.className,
       prepared: data.level === 0 || pick.prepared,
+      always: pick.always,
       school: data.school,
       time: f['Casting Time'] ?? '',
       range: f.Range ?? '',

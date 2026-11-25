@@ -1,9 +1,9 @@
-import { router } from 'expo-router';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CATEGORIES, Category, IndexEntry, search } from '../../compendium/store';
 import { openEntry } from '../../components/compendium/Entries';
+import { close } from '../../components/ui';
 import { Palette, usePalette } from '../../theme/colors';
 
 const ROW_H = 60;
@@ -34,7 +34,7 @@ export default function CompendiumSearch() {
             clearButtonMode="while-editing"
           />
         </View>
-        <Pressable onPress={() => router.back()} hitSlop={8}>
+        <Pressable onPress={() => close()} hitSlop={8}>
           <Text style={s.cancel}>Done</Text>
         </Pressable>
       </View>

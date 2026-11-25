@@ -1,4 +1,4 @@
-import { Stack, useLocalSearchParams, router } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { maxSpellLevel, spellListFor } from '../../character/combat';
@@ -6,7 +6,7 @@ import { derive } from '../../character/engine';
 import { useActiveCharacter, useCharacters } from '../../character/store';
 import { getEntry, getIndex, normalize } from '../../compendium/store';
 import { openEntry } from '../../components/compendium/Entries';
-import { useStyles } from '../../components/ui';
+import { useStyles, close } from '../../components/ui';
 import { Palette } from '../../theme/colors';
 
 interface Row {
@@ -69,7 +69,7 @@ export default function ManageSpells() {
 
   return (
     <View style={st.root}>
-      <Stack.Screen options={{ title: `${cls} Spells`, headerRight: () => <Pressable onPress={() => router.back()} hitSlop={8}><Text style={st.done}>Done</Text></Pressable> }} />
+      <Stack.Screen options={{ title: `${cls} Spells`, headerRight: () => <Pressable onPress={() => close()} hitSlop={8}><Text style={st.done}>Done</Text></Pressable> }} />
       <View style={st.summary}>
         <Text style={st.sumText}>
           Cantrips <Text style={cantrips > (sc?.cantrips ?? 0) ? st.over : st.ok}>{cantrips}/{sc?.cantrips ?? 0}</Text>

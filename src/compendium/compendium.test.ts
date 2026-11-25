@@ -70,3 +70,17 @@ describe('compendium data', () => {
     expect(search('long', 'item')[0].name.toLowerCase().startsWith('long')).toBe(true);
   });
 });
+
+describe('background origin feats', () => {
+  it('every background feat resolves to a compendium feat', async () => {
+    const { RULES } = await import('../character/rules');
+    const unresolved = RULES.backgrounds
+      .filter((b) => b.feat && b.feat !== 'anyFromCategory')
+      .filter((b) => {
+        const [name, source] = b.feat!.split('|');
+        return !resolveLink('feat', `${name.split(';')[0].trim()}${source ? `|${source}` : ''}`);
+      })
+      .map((b) => b.name);
+    expect(unresolved).toEqual([]);
+  });
+});

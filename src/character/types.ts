@@ -60,6 +60,10 @@ export interface Character {
   exhaustion: number;
   concentration: string | null;
 
+  /** Feats taken (compendium ids). Ability increases from feats go in otherBonus. */
+  feats: string[];
+  /** Barbarian Rage is active. */
+  raging: boolean;
   /** Weapons carried. `bonus` is a magic +X to attack and damage. */
   weapons: { key: string; itemId: string; bonus: number }[];
   /** Spells known/in spellbook per class; `prepared` is what you can cast today (cantrips are always prepared). */

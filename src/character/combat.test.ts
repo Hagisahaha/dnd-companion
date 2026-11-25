@@ -111,3 +111,59 @@ describe('spells', () => {
     expect(spellListFor('Barbarian', null)).toBeNull();
   });
 });
+
+describe('automation: feats, rage, sneak attack, granted spells', () => {
+  const scores = { str: 16, dex: 16, con: 14, int: 10, wis: 12, cha: 8 };
+
+  it('feats change initiative, HP, speed, AC and add Luck Points', () => {
+    const base = make({ classes: [{ name: 'Fighter', level: 4, subclass: null }], baseScores: scores, armorId: 'item:chain mail|xphb' });
+    const withFeats = { ...base, feats: ['feat:alert|xphb', 'feat:tough|xphb', 'feat:speedy|xphb', 'feat:defense|xphb', 'feat:lucky|xphb'] };
+    const a = derive(base);
+    const b = derive(withFeats);
+    expect(b.initiative.value - a.initiative.value).toBe(2);
+    expect(b.maxHp.value - a.maxHp.value).toBe(8);
+    expect(b.speed.value - a.speed.value).toBe(10);
+    expect(b.ac.value - a.ac.value).toBe(1);
+    expect(b.resources.find((r) => r.key === 'lucky')).toMatchObject({ max: 2, shortRest: 'none' });
+  });
+
+  it('archery adds to ranged attacks; dueling to one-handed melee only', () => {
+    const c = make({
+      classes: [{ name: 'Fighter', level: 1, subclass: null }], baseScores: scores, feats: ['feat:archery|xphb', 'feat:dueling|xphb'],
+      weapons: [{ key: 'b', itemId: 'item:longbow|xphb', bonus: 0 }, { key: 's', itemId: 'item:longsword|xphb', bonus: 0 }, { key: 'g', itemId: 'item:greatsword|xphb', bonus: 0 }],
+    });
+    const [bow, sword, great] = attacks(c);
+    expect(bow.toHit.value).toBe(3 + 2 + 2);
+    expect(sword.damage).toBe('1d8+5');
+    expect(sword.twoHanded).toBe('1d10+3');
+    expect(great.damage).toBe('2d6+3');
+  });
+
+  it('rage adds its bonus to Strength attacks only while raging', () => {
+    const c = make({ classes: [{ name: 'Barbarian', level: 9, subclass: null }], baseScores: scores, weapons: [{ key: 'a', itemId: 'item:greataxe|xphb', bonus: 0 }] });
+    expect(attacks(c)[0].damage).toBe('1d12+3');
+    expect(attacks({ ...c, raging: true })[0].damage).toBe('1d12+6');
+    expect(attacks({ ...c, raging: true }).at(-1)!.damage).toBe('7');
+  });
+
+  it('sneak attack is offered on finesse and ranged weapons', () => {
+    const c = make({ classes: [{ name: 'Rogue', level: 5, subclass: null }], baseScores: scores, weapons: [{ key: 'r', itemId: 'item:rapier|xphb', bonus: 0 }, { key: 'c', itemId: 'item:club|xphb', bonus: 0 }] });
+    const [rapier, club] = attacks(c);
+    expect(rapier.extras).toEqual([{ label: '+ Sneak Attack 3d6', formula: '1d8+3d6+3' }]);
+    expect(club.extras).toEqual([]);
+  });
+
+  it('great weapon master is an optional extra on heavy weapons', () => {
+    const c = make({ classes: [{ name: 'Fighter', level: 4, subclass: null }], baseScores: scores, feats: ['feat:great weapon master|xphb'], weapons: [{ key: 'g', itemId: 'item:greatsword|xphb', bonus: 0 }] });
+    expect(attacks(c)[0]).toMatchObject({ damage: '2d6+3', extras: [{ formula: '2d6+5' }] });
+  });
+
+  it('domain and oath spells are always prepared and outside the limit', () => {
+    const c = make({ classes: [{ name: 'Cleric', level: 5, subclass: 'Life' }] });
+    const list = spells(c);
+    expect(list.filter((s) => s.always).map((s) => s.name)).toEqual(expect.arrayContaining(['Bless', 'Cure Wounds', 'Revivify', 'Aid']));
+    expect(list.every((s) => s.prepared)).toBe(true);
+    const pal = spells(make({ classes: [{ name: 'Paladin', level: 2, subclass: null }] }));
+    expect(pal.map((s) => s.name)).toEqual(['Divine Smite']);
+  });
+});

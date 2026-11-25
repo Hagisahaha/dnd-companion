@@ -2,11 +2,18 @@
  * Small iOS-style building blocks (grouped lists, steppers, segmented controls, pickers).
  * Everything takes colors from the system palette so light and dark mode just work.
  */
+import { router } from 'expo-router';
 import { ReactNode, useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { normalize } from '../compendium/store';
 import { Palette, usePalette } from '../theme/colors';
+
+/** Back if there is somewhere to go back to; otherwise (opened from a link) home. */
+export function close() {
+  if (router.canGoBack()) router.back();
+  else router.replace('/');
+}
 
 export function useStyles<T>(make: (c: Palette) => T): [T, Palette] {
   const c = usePalette();

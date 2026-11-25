@@ -27,7 +27,8 @@ export interface ClassRules {
   subclassLevels: number[];
   asiLevels: number[];
   multiclass: { armor: string[]; weapons: string[] };
-  subclasses: { name: string; shortName: string; source: string; features: FeatureRef[] }[];
+  alwaysPrepared: { level: number; ids: string[] }[];
+  subclasses: { name: string; shortName: string; source: string; alwaysPrepared: { level: number; ids: string[] }[]; features: FeatureRef[] }[];
 }
 
 export interface SpeciesRules {
