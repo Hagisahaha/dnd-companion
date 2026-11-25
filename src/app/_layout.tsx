@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useCharacters } from '../character/store';
+import { CrashScreen } from '../components/CrashScreen';
 import { QuickRollProvider } from '../components/QuickRoll';
 import { startSync } from '../sync/sync';
 import { usePalette } from '../theme/colors';
@@ -28,4 +29,9 @@ export default function RootLayout() {
       </QuickRollProvider>
     </GestureHandlerRootView>
   );
+}
+
+/** Any render error below the root shows the crash screen with its stack. */
+export function ErrorBoundary({ error }: { error: Error }) {
+  return <CrashScreen error={error} />;
 }
