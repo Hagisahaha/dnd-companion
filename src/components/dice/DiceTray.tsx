@@ -320,8 +320,8 @@ const styles = (c: Palette) =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: c.background },
     tray: { flex: 1, backgroundColor: c.tray, borderRadius: 20, overflow: 'hidden', marginHorizontal: 8 },
-    resultBox: { height: 136, alignItems: 'center', justifyContent: 'center', paddingTop: 6 },
-    total: { fontSize: 52, lineHeight: 56, fontWeight: '700', fontVariant: ['tabular-nums'], letterSpacing: -1.5 },
+    resultBox: { height: 132, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 8, marginBottom: 6 },
+    total: { fontSize: 48, lineHeight: 54, fontWeight: '700', fontVariant: ['tabular-nums'], letterSpacing: -1.5 },
     formula: { fontSize: 13, color: c.secondaryLabel },
     breakdown: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6, marginTop: 6, paddingHorizontal: 16, maxHeight: 40, overflow: 'hidden' },
     chip: { minWidth: 40, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: c.fill, alignItems: 'center' },
