@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# downloaded source data (rebuild with npm run data:fetch)
+data-raw/

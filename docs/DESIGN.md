@@ -82,7 +82,9 @@ Nguyên tắc: **ít thao tác nhất, mượt nhất, không thiếu và không
 - **Bottom sheet**: `@gorhom/bottom-sheet` (khi làm sheet).
 - **Haptics / âm thanh**: `expo-haptics`, `expo-audio`.
 - **State + local-first sync**: `@legendapp/state` (persist qua MMKV, sync qua plugin Supabase).
-- **Dữ liệu tra cứu**: 5etools JSON được tiền xử lý lúc build thành bundle gọn, có index tìm kiếm; homebrew nạp chồng lên.
+- **Dữ liệu tra cứu**: 5etools JSON (`npm run data:fetch` rồi `npm run data:build`) được tiền xử lý thành `src/data/compendium/` gồm index tìm kiếm và một file cho mỗi loại; app chỉ tải khi mở tra cứu, nên không làm chậm khởi động. Homebrew sẽ nạp chồng lên.
+  - Quy tắc nội dung: mục nào có bản in mới hơn (`reprintedAs`) thì bỏ bản cũ; loại UA, reskin WoW, screen, sách nấu ăn và đan len.
+  - Trong text, xúc xắc (`8d6`, `+5`) bấm vào là roll ngay; link mở mục tương ứng.
 - **Rules engine**: thuần TypeScript, có unit test. Mọi số được tính ra kèm "nguồn" (ví dụ AC 16 = 10 + DEX 2 + Shield 2 + …) để không bao giờ sai mà không biết vì sao.
 
 ## 6. Còn chờ

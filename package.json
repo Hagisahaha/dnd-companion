@@ -43,7 +43,9 @@
     "web": "expo start --web",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "gen:atlas": "tsx scripts/gen-dice-atlas.mts"
+    "gen:atlas": "tsx scripts/gen-dice-atlas.mts",
+    "data:fetch": "tsx scripts/data/fetch-5etools.mts",
+    "data:build": "tsx scripts/data/build-compendium.mts"
   },
   "private": true
 }
