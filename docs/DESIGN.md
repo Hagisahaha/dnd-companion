@@ -33,13 +33,15 @@ Nguyên tắc: **ít thao tác nhất, mượt nhất, không thiếu và không
 
 ```
 ┌───────────────────────────┐
-│ Nhân vật · HP 34/41 · AC 16│  ← thông số gọn, chạm vào HP để chỉnh
+│ Nhân vật · HP 34/41 · AC 16│  ← thông số gọn, chạm vào HP để chỉnh (chưa làm)
 │ Slots ●●○ ●○              │
 ├───────────────────────────┤
 │                           │
 │        (khay 3D)          │  ← nhấn giữ = nhấc xúc xắc; hất = ném
 │                           │
-│  [ADV] [DIS]   +mod  ⟲    │
+├───────────────────────────┤
+│           27              │  ← tổng + từng viên, nằm ngoài khay để không đè xúc xắc
+│  [ADV|Normal|DIS]  − +2 + │
 │  d4 d6 d8 d10 d12 d20 d% │  ← chạm = thêm 1 viên vào tay
 └───────────────────────────┘
 ```
@@ -71,12 +73,13 @@ Nguyên tắc: **ít thao tác nhất, mượt nhất, không thiếu và không
 | Nhấn giữ một thứ bất kỳ | Xem chi tiết rule/feature/spell |
 | Thanh tìm kiếm (kéo xuống) | Tra cứu toàn bộ dữ liệu |
 
-## 5. Công nghệ (dự kiến, chốt khi bắt đầu code)
+## 5. Công nghệ
 
 - **Expo SDK 58**, Expo Router, development build (không dùng Expo Go vì có native 3D).
-- **3D + vật lý xúc xắc**: `react-native-filament` (Filament renderer + Bullet physics).
+- **3D**: `three` + `@react-three/fiber` (expo-gl trên native, WebGL trên web; chạy được trên web nên dễ kiểm tra tự động).
+- **Vật lý**: `cannon-es`, chạy headless trước khi render rồi phát lại (xem mục 3).
 - **Cử chỉ và animation**: `react-native-gesture-handler`, `react-native-reanimated`.
-- **Bottom sheet**: `@gorhom/bottom-sheet`.
+- **Bottom sheet**: `@gorhom/bottom-sheet` (khi làm sheet).
 - **Haptics / âm thanh**: `expo-haptics`, `expo-audio`.
 - **State + local-first sync**: `@legendapp/state` (persist qua MMKV, sync qua plugin Supabase).
 - **Dữ liệu tra cứu**: 5etools JSON được tiền xử lý lúc build thành bundle gọn, có index tìm kiếm; homebrew nạp chồng lên.
