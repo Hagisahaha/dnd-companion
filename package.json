@@ -45,7 +45,7 @@
     "typecheck": "tsc --noEmit",
     "gen:atlas": "tsx scripts/gen-dice-atlas.mts",
     "data:fetch": "tsx scripts/data/fetch-5etools.mts",
-    "data:build": "tsx scripts/data/build-compendium.mts"
+    "data:build": "tsx scripts/data/build-compendium.mts && tsx scripts/data/build-rules.mts"
   },
   "private": true
 }
