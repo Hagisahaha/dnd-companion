@@ -8,10 +8,10 @@
 import { Canvas } from '@react-three/fiber';
 import * as Crypto from 'expo-crypto';
 import * as Haptics from 'expo-haptics';
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ComponentRef, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { LayoutChangeEvent, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
+import { GestureDetector, useExclusiveGestures, useLongPressGesture, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
 import { useCharacters } from '../../character/store';
 import { DIE_SIDES, DieSides, DiceFormula, formatFormula, formulaFromHand, parseFormula } from '../../dice/notation';
 import { toPhysical } from '../../dice/physical';
@@ -40,9 +40,20 @@ function haptic(style: Haptics.ImpactFeedbackStyle) {
   Haptics.impactAsync(style).catch(() => {});
 }
 
-let keySeq = 0;
+// Stable keys (kind + position) let React reuse the dice meshes between throws instead of remounting them.
 const sceneDice = (formula: DiceFormula, mode: RollMode): SceneDie[] =>
-  toPhysical(roll(formula, mode, () => 1).dice).map((d) => ({ key: `k${keySeq++}`, kind: d.kind }));
+  toPhysical(roll(formula, mode, () => 1).dice).map((d, i) => ({ key: `${d.kind}-${i}`, kind: d.kind }));
+
+type Sample = { x: number; y: number; t: number };
+/** Fling velocity (px/s) from the last few touch samples; 0 if the finger stopped before lifting. */
+function velocityOf(sm: Sample[]): [number, number] {
+  if (sm.length < 2) return [0, 0];
+  const a = sm[0];
+  const b = sm[sm.length - 1];
+  if (Date.now() - b.t > 80) return [0, 0];
+  const dt = Math.max(1, b.t - a.t) / 1000;
+  return [(b.x - a.x) / dt, (b.y - a.y) / dt];
+}
 
 export function DiceTray() {
   const c = usePalette();
@@ -64,6 +75,9 @@ export function DiceTray() {
   // Opening pose: one d20 resting in the middle, inviting a flick.
   const [ctrl] = useState(() => createController([{ p: [0, 1.0, 1], q: [0.31, 0.12, 0.2, 0.92] }]));
   const size = useRef({ w: 1, h: 1 });
+  /** Tray's top-left in window coordinates, so drags starting on the dice bar map into the tray. */
+  const origin = useRef({ x: 0, y: 0 });
+  const trayRef = useRef<ComponentRef<typeof View>>(null);
   const lastImpact = useRef(0);
 
   const formula = useMemo(() => (hand.length ? formulaFromHand(hand, modifier) : { ...last, modifier }), [hand, last, modifier]);
@@ -79,7 +93,9 @@ export function DiceTray() {
   const toWorld = useCallback(
     (px: number, py: number) => {
       const [bx, bz] = bounds();
-      return { x: (px / size.current.w - 0.5) * 2 * bx, z: (py / size.current.h - 0.5) * 2 * bz };
+      const clamp = (v: number, m: number) => Math.max(-m + 0.8, Math.min(m - 0.8, v));
+      // Clamped so dice carried up from the dice bar wait at the tray's bottom edge.
+      return { x: clamp((px / size.current.w - 0.5) * 2 * bx, bx), z: clamp((py / size.current.h - 0.5) * 2 * bz, bz) };
     },
     [bounds],
   );
@@ -95,14 +111,25 @@ export function DiceTray() {
   }, [ctrl]);
 
   // ---- gesture: hold to lift, drag to carry, flick to throw ----
-  const g = useRef({ x0: 0, y0: 0, lifted: false, timer: 0 as unknown as ReturnType<typeof setTimeout>, samples: [] as { x: number; y: number; t: number }[] });
+  const g = useRef({
+    x0: 0, y0: 0, lifted: false, timer: 0 as unknown as ReturnType<typeof setTimeout>, samples: [] as Sample[],
+    /** What was picked up, fixed at lift time so taps during the carry can't change the throw. */
+    formula: null as DiceFormula | null, used: [] as DieSides[],
+  });
 
+  /** Picks the dice up at a point in the tray. `extra` adds one die (a swipe that starts on the dice bar). */
   const lift = useCallback(
-    (px: number, py: number) => {
-      if (g.current.lifted || ctrl.phase === 'playing') return;
+    (px: number, py: number, extra?: DieSides) => {
+      if (g.current.lifted) return;
+      // Lifting interrupts a throw that is still rolling: no waiting for dice to settle.
       g.current.lifted = true;
+      const used = extra ? [...hand, extra].slice(0, MAX_HAND) : hand;
+      const f = used.length ? formulaFromHand(used, modifier) : { ...last, modifier };
+      g.current.formula = f;
+      g.current.used = used;
+      ctrl.track = null;
       ctrl.hand = toWorld(px, py);
-      const next = sceneDice(formula, mode);
+      const next = sceneDice(f, mode);
       ctrl.poses = next.map(() => ({ p: [ctrl.hand.x, 2.8, ctrl.hand.z], q: [0, 0, 0, 1] }));
       ctrl.phase = 'holding';
       setDice(next);
@@ -110,12 +137,14 @@ export function DiceTray() {
       setResult(null);
       haptic(Haptics.ImpactFeedbackStyle.Soft);
     },
-    [ctrl, formula, mode, toWorld],
+    [ctrl, hand, last, modifier, mode, toWorld],
   );
 
   const release = useCallback(
     (vx: number, vy: number) => {
-      if (ctrl.phase !== 'holding') return;
+      if (ctrl.phase !== 'holding' || !g.current.formula) return;
+      const thrown = g.current.formula;
+      const used = g.current.used;
       const [bx, bz] = bounds();
       const scale = (2 * bx) / size.current.w;
       let wx = vx * scale;
@@ -132,7 +161,7 @@ export function DiceTray() {
         wx *= MAX / speed;
         wz *= MAX / speed;
       }
-      const r = roll(formula, useRollMode.getState().consume(), rng);
+      const r = roll(thrown, useRollMode.getState().consume(), rng);
       const physical = toPhysical(r.dice);
       const track = simulateThrow({
         dice: physical.map((d, i) => ({
@@ -153,14 +182,33 @@ export function DiceTray() {
       ctrl.trackStart = performance.now();
       ctrl.impactCursor = 0;
       ctrl.phase = 'playing';
-      if (hand.length) setLast(formulaFromHand(hand, 0));
+      if (used.length) setLast(formulaFromHand(used, 0));
       setHand([]);
       setResult(r);
-      useRollLog.getState().record(r, hand.length ? presetLabel : null, activeName());
+      useRollLog.getState().record(r, used.length && used.length === hand.length ? presetLabel : null, activeName());
       setPresetLabel(null);
     },
-    [bounds, ctrl, formula, hand, presetLabel],
+    [bounds, ctrl, hand, presetLabel],
   );
+
+  // Drags that start on a dice-bar icon arrive in window coordinates.
+  const carryFromBar = {
+    start: (ax: number, ay: number, sides: DieSides) => {
+      g.current.samples = [{ x: ax, y: ay, t: Date.now() }];
+      lift(ax - origin.current.x, ay - origin.current.y, sides);
+    },
+    move: (ax: number, ay: number) => {
+      const sm = g.current.samples;
+      sm.push({ x: ax, y: ay, t: Date.now() });
+      if (sm.length > 6) sm.shift();
+      if (g.current.lifted && ctrl.phase === 'holding') ctrl.hand = toWorld(ax - origin.current.x, ay - origin.current.y);
+    },
+    end: () => {
+      if (!g.current.lifted) return;
+      g.current.lifted = false;
+      release(...velocityOf(g.current.samples));
+    },
+  };
 
   const pan = usePanGesture({
     minDistance: 0,
@@ -188,17 +236,15 @@ export function DiceTray() {
       if (!g.current.lifted) return;
       g.current.lifted = false;
       // Velocity from the last few samples is steadier than one event's delta.
-      const sm = g.current.samples;
-      const a = sm[0];
-      const b = sm[sm.length - 1];
-      const dt = Math.max(1, b.t - a.t) / 1000;
-      const recent = Date.now() - b.t < 80;
-      release(recent ? (b.x - a.x) / dt : 0, recent ? (b.y - a.y) / dt : 0);
+      release(...velocityOf(g.current.samples));
     },
   });
 
   const onLayout = (e: LayoutChangeEvent) => {
     size.current = { w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height };
+    trayRef.current?.measureInWindow((x, y) => {
+      origin.current = { x, y };
+    });
   };
 
   const addDie = (sides: DieSides) => {
@@ -261,7 +307,7 @@ export function DiceTray() {
   return (
     <View style={s.root}>
       <GestureDetector gesture={pan}>
-        <View style={s.tray} onLayout={onLayout}>
+        <View style={s.tray} onLayout={onLayout} ref={trayRef}>
           <Canvas shadows camera={{ fov: CAMERA_FOV, near: 1, far: 80, position: [0, CAMERA_HEIGHT, 0] }} style={StyleSheet.absoluteFill}>
             <color attach="background" args={[c.tray]} />
             <Suspense fallback={null}>
@@ -271,6 +317,21 @@ export function DiceTray() {
 
         </View>
       </GestureDetector>
+
+      <View style={s.diceBar}>
+        {DIE_SIDES.map((sides) => (
+          <DieButton
+            key={sides}
+            sides={sides}
+            count={counts.get(sides) ?? 0}
+            onAdd={() => addDie(sides)}
+            onRemove={() => removeDie(sides)}
+            carry={carryFromBar}
+            s={s}
+            c={c}
+          />
+        ))}
+      </View>
 
       <View style={s.resultBox}>
           {showResult ? (
@@ -319,7 +380,7 @@ export function DiceTray() {
 
         <View style={s.handRow}>
           <Text style={s.handText} numberOfLines={1}>
-            {hand.length ? formatFormula(formula) : `Last: ${formatFormula(formula)}`}
+            {hand.length ? formatFormula(formula) : 'Swipe a die up to roll it · tap to add'}
           </Text>
           {hand.length > 0 || modifier !== 0 ? (
             <Pressable onPress={() => { setHand([]); setModifier(0); }} hitSlop={8}>
@@ -344,28 +405,6 @@ export function DiceTray() {
           </Pressable>
         </ScrollView>
 
-        <View style={s.diceBar}>
-          {DIE_SIDES.map((sides) => {
-            const n = counts.get(sides) ?? 0;
-            return (
-              <Pressable
-                key={sides}
-                onPress={() => addDie(sides)}
-                onLongPress={() => removeDie(sides)}
-                style={({ pressed }) => [s.dieBtn, n > 0 && s.dieBtnOn, pressed && { opacity: 0.6 }]}
-                accessibilityLabel={`Add d${sides}`}
-              >
-                <DieGlyph sides={sides} size={26} color={n > 0 ? c.accent : c.label} />
-                <Text style={[s.dieLabel, n > 0 && { color: c.accent }]}>{sides === 100 ? 'd%' : `d${sides}`}</Text>
-                {n > 0 && (
-                  <View style={s.badge}>
-                    <Text style={s.badgeText}>{n}</Text>
-                  </View>
-                )}
-              </Pressable>
-            );
-          })}
-        </View>
       </View>
       {editing && (
         <PresetEditor
@@ -382,7 +421,7 @@ const styles = (c: Palette) =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: c.background },
     tray: { flex: 1, backgroundColor: c.tray, borderRadius: 20, overflow: 'hidden', marginHorizontal: 8 },
-    resultBox: { height: 132, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 8, marginBottom: 6 },
+    resultBox: { height: 120, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 8, marginBottom: 6 },
     total: { fontSize: 48, lineHeight: 54, fontWeight: '700', fontVariant: ['tabular-nums'], letterSpacing: -1.5 },
     formula: { fontSize: 13, color: c.secondaryLabel },
     breakdownScroll: { flexGrow: 0, alignSelf: 'stretch', marginTop: 6 },
@@ -407,7 +446,7 @@ const styles = (c: Palette) =>
     handRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 20, paddingHorizontal: 4 },
     handText: { fontSize: 15, color: c.secondaryLabel, flex: 1 },
     clear: { fontSize: 15, color: c.accent },
-    diceBar: { flexDirection: 'row', justifyContent: 'space-between' },
+    diceBar: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, paddingTop: 8 },
     presetBar: { flexGrow: 0, marginHorizontal: -12 },
     presets: { paddingHorizontal: 12, gap: 8, alignItems: 'center' },
     preset: { height: 36, paddingHorizontal: 12, borderRadius: 10, backgroundColor: c.fill, justifyContent: 'center', maxWidth: 160 },
@@ -415,7 +454,7 @@ const styles = (c: Palette) =>
     presetFormula: { fontSize: 11, color: c.secondaryLabel, fontVariant: ['tabular-nums'] },
     presetAdd: { width: 36, paddingHorizontal: 0, alignItems: 'center' },
     presetAddText: { fontSize: 22, color: c.accent, marginTop: -2 },
-    dieBtn: { width: 48, height: 58, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 2 },
+    dieBtn: { width: 50, height: 60, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 2 },
     dieBtnOn: { backgroundColor: c.fill },
     dieLabel: { fontSize: 12, fontWeight: '500', color: c.label },
     badge: {
@@ -424,3 +463,56 @@ const styles = (c: Palette) =>
     },
     badgeText: { color: c.onAccent, fontSize: 11, fontWeight: '700' },
   });
+
+interface Carry {
+  start: (ax: number, ay: number, sides: DieSides) => void;
+  move: (ax: number, ay: number) => void;
+  end: () => void;
+}
+
+/**
+ * One die on the bar. Tap adds it to the hand, hold removes one, and swiping up
+ * carries hand + this die into the tray and throws on release: one motion to roll.
+ */
+function DieButton({ sides, count, onAdd, onRemove, carry, s, c }: {
+  sides: DieSides; count: number; onAdd: () => void; onRemove: () => void; carry: Carry; s: ReturnType<typeof styles>; c: Palette;
+}) {
+  // Gesture hooks keep their first config; read the latest callbacks through a ref.
+  const latest = useRef({ onAdd, onRemove, carry });
+  useLayoutEffect(() => {
+    latest.current = { onAdd, onRemove, carry };
+  });
+  const active = useRef(false);
+
+  const pan = usePanGesture({
+    runOnJS: true,
+    minDistance: 10,
+    onActivate: (e) => {
+      active.current = true;
+      latest.current.carry.start(e.absoluteX, e.absoluteY, sides);
+    },
+    onUpdate: (e) => active.current && latest.current.carry.move(e.absoluteX, e.absoluteY),
+    onFinalize: () => {
+      if (!active.current) return;
+      active.current = false;
+      latest.current.carry.end();
+    },
+  });
+  const hold = useLongPressGesture({ runOnJS: true, minDuration: 450, onActivate: () => latest.current.onRemove() });
+  const tap = useTapGesture({ runOnJS: true, onActivate: () => latest.current.onAdd() });
+  const gesture = useExclusiveGestures(pan, hold, tap);
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <View style={[s.dieBtn, count > 0 && s.dieBtnOn]} accessibilityRole="button" accessibilityLabel={`Add d${sides}`} accessibilityHint="Swipe up to roll it">
+        <DieGlyph sides={sides} size={28} color={count > 0 ? c.accent : c.label} />
+        <Text style={[s.dieLabel, count > 0 && { color: c.accent }]}>{sides === 100 ? 'd%' : `d${sides}`}</Text>
+        {count > 0 && (
+          <View style={s.badge}>
+            <Text style={s.badgeText}>{count}</Text>
+          </View>
+        )}
+      </View>
+    </GestureDetector>
+  );
+}
