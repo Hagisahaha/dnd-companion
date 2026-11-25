@@ -14,6 +14,11 @@ create table if not exists public.characters (
 
 create index if not exists characters_user_id_idx on public.characters (user_id);
 
+-- Newer Supabase projects don't expose new tables to the API roles automatically.
+-- Signed-in players get table access; the policies below narrow it to their own rows.
+-- The anonymous role gets nothing.
+grant select, insert, update on public.characters to authenticated;
+
 -- Each player can only see and change their own characters.
 alter table public.characters enable row level security;
 
