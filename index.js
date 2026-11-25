@@ -4,6 +4,13 @@
  * follow-up error. This handler forwards the FIRST fatal error with its stack in the
  * message, so the real cause shows on the device's error screen.
  */
+// three's CommonJS entry (which @react-three/fiber's native build requires) calls Node's
+// process.emitWarning to flag `require('three')` as deprecated. React Native's `process`
+// has no emitWarning, so loading three threw "undefined is not a function" at startup on iOS.
+if (typeof process !== 'undefined' && typeof process.emitWarning !== 'function') {
+  process.emitWarning = () => {};
+}
+
 const previous = global.ErrorUtils?.getGlobalHandler?.();
 let reported = false;
 global.ErrorUtils?.setGlobalHandler?.((error, isFatal) => {
